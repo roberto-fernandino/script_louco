@@ -26,6 +26,9 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [offset, setOffset] = useState(0);
+  const [minScore, setMinScore] = useState("80");
+  const [fraudSearch, setFraudSearch] = useState("");
+  const [fraudResult, setFraudResult] = useState<Row | null>(null);
   const limit = 50;
 
   async function loadTables() {
@@ -59,6 +62,15 @@ function App() {
     }
   }
 
+  async function searchFraud() {
+    setLoading(true); setError(""); setFraudResult(null);
+    try {
+      const data = await request("/fraud/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ min_score: Number(minScore), search: fraudSearch || null }) });
+      setFraudResult(data);
+    } catch (err) { setError(err instanceof Error ? err.message : "Não foi possível consultar fraude."); }
+    finally { setLoading(false); }
+  }
+
   useEffect(() => { loadTables().catch((err) => setError(err.message)); }, []);
   useEffect(() => { if (table) loadRows(0); }, [table]);
 
@@ -69,6 +81,8 @@ function App() {
       <label className="search">Buscar<input value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => event.key === "Enter" && loadRows(0)} placeholder="Digite e pressione Enter" /></label>
       <button onClick={() => loadRows(0)} disabled={loading}>{loading ? "Carregando..." : "Consultar"}</button>
     </section>
+    <section className="fraud-box"><div><strong>Buscar possível fraude</strong><p>Consulta clientes no querybuscas até encontrar um score acima do limite.</p></div><input type="number" min="0" max="100" value={minScore} onChange={(event) => setMinScore(event.target.value)} aria-label="Score mínimo" /><input value={fraudSearch} onChange={(event) => setFraudSearch(event.target.value)} placeholder="Nome, e-mail ou documento (opcional)" /><button onClick={searchFraud} disabled={loading}>Buscar fraude</button></section>
+    {fraudResult && <div className={fraudResult.found ? "fraud-result found" : "fraud-result"}>{fraudResult.found ? `Encontrado: score ${String(fraudResult.score)} — ${String((fraudResult.customer as Row)?.name ?? "cliente")}` : `Nenhum score acima do limite encontrado após ${String(fraudResult.checked)} consulta(s).`}</div>}
     {error && <div className="error">{error}</div>}
     <section className="card"><div className="card-head"><strong>{table || "Nenhuma tabela"}</strong><span>{rows.length} registros exibidos</span></div>
       <div className="table-wrap">{rows.length ? <table><thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{columns.map((column) => <td key={column}>{table === "card" && column === "check" ? <input type="checkbox" checked={Boolean(row[column])} onChange={(event) => updateCheck(row.record_id, event.target.checked)} aria-label={`Atualizar check do cartão ${String(row.record_id)}`} /> : String(row[column] ?? "—")}</td>)}</tr>)}</tbody></table> : <div className="empty">{loading ? "Consultando dados..." : "Nenhum registro encontrado."}</div>}</div>

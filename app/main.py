@@ -1,6 +1,7 @@
 import re
 from typing import Annotated
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -26,6 +27,12 @@ IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
 
 class CheckUpdate(BaseModel):
     check: bool
+
+
+class FraudSearchRequest(BaseModel):
+    min_score: float = 80
+    max_checks: int = 100
+    search: str | None = None
 
 
 def rows(result) -> list[dict]:
@@ -134,6 +141,72 @@ async def update_card_check(record_id: int, payload: CheckUpdate, session: Sessi
         raise HTTPException(status_code=404, detail="Card not found")
     await session.commit()
     return dict(card)
+
+
+def find_score(value: object) -> float | None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if str(key).lower() in {"score", "fraud_score", "risco", "risk_score"}:
+                try:
+                    return float(item)
+                except (TypeError, ValueError):
+                    pass
+            found = find_score(item)
+            if found is not None:
+                return found
+    elif isinstance(value, list):
+        for item in value:
+            found = find_score(item)
+            if found is not None:
+                return found
+    return None
+
+
+@app.post("/fraud/search")
+async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
+    if payload.min_score < 0 or payload.min_score > 100:
+        raise HTTPException(status_code=400, detail="min_score must be between 0 and 100")
+    if payload.max_checks < 1 or payload.max_checks > 1000:
+        raise HTTPException(status_code=400, detail="max_checks must be between 1 and 1000")
+    if not settings.querybuscas_cookie:
+        raise HTTPException(status_code=503, detail="QUERYBUSCAS_COOKIE is not configured")
+
+    conditions = ['"document_number" IS NOT NULL', 'TRIM("document_number") <> \'\'']
+    params: dict[str, object] = {"limit": payload.max_checks}
+    if payload.search:
+        conditions.append('("name" ILIKE :search OR "email" ILIKE :search OR "document_number" ILIKE :search)')
+        params["search"] = f"%{payload.search}%"
+    result = await session.execute(
+        text(f'''SELECT "record_id", "name", "email", "document_number"
+                FROM importacao_transacoes.customer
+                WHERE {' AND '.join(conditions)}
+                ORDER BY "record_id" LIMIT :limit'''),
+        params,
+    )
+    candidates = [dict(row) for row in result.mappings().all()]
+    headers = {"Accept": "*/*", "Cookie": settings.querybuscas_cookie}
+    if settings.querybuscas_nonce:
+        headers["x-qb-nonce"] = settings.querybuscas_nonce
+    if settings.querybuscas_signature:
+        headers["x-qb-sig"] = settings.querybuscas_signature
+
+    checked = 0
+    async with httpx.AsyncClient(timeout=settings.querybuscas_timeout_seconds) as client:
+        for candidate in candidates:
+            document = re.sub(r"\D", "", str(candidate["document_number"]))
+            if not document:
+                continue
+            try:
+                response = await client.get(f"{settings.querybuscas_base_url.rstrip('/')}/{document}", headers=headers)
+                response.raise_for_status()
+                data = response.json()
+                score = find_score(data)
+                checked += 1
+                if score is not None and score >= payload.min_score:
+                    return {"found": True, "score": score, "checked": checked, "customer": candidate, "querybuscas": data}
+            except (httpx.HTTPError, ValueError) as error:
+                raise HTTPException(status_code=502, detail=f"querybuscas request failed: {error}") from error
+    return {"found": False, "score": None, "checked": checked, "customer": None}
 
 
 @app.get("/health")
