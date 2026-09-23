@@ -103,6 +103,28 @@ async def related_customer_data(session: AsyncSession, customer_id: int, card_re
     return related
 
 
+async def fraud_scan_cursor(session: AsyncSession) -> tuple[int, int]:
+    await session.execute(text("""CREATE TABLE IF NOT EXISTS importacao_transacoes.fraud_scan_progress (
+        scan_name text PRIMARY KEY,
+        last_card_record_id bigint NOT NULL DEFAULT 0,
+        last_page bigint NOT NULL DEFAULT 0,
+        updated_at timestamptz NOT NULL DEFAULT now()
+    )"""))
+    await session.execute(text("""INSERT INTO importacao_transacoes.fraud_scan_progress (scan_name)
+        VALUES ('fraud_search') ON CONFLICT (scan_name) DO NOTHING"""))
+    result = await session.execute(text("""SELECT last_card_record_id, last_page
+        FROM importacao_transacoes.fraud_scan_progress WHERE scan_name = 'fraud_search'"""))
+    row = result.one()
+    return int(row[0]), int(row[1])
+
+
+async def save_fraud_scan_cursor(session: AsyncSession, card_record_id: int, page: int) -> None:
+    await session.execute(text("""UPDATE importacao_transacoes.fraud_scan_progress
+        SET last_card_record_id = :card_record_id, last_page = :page, updated_at = now()
+        WHERE scan_name = 'fraud_search'"""), {"card_record_id": card_record_id, "page": page})
+    await session.commit()
+
+
 @app.get("/tables")
 async def list_tables(session: Session, schema: str = DEFAULT_SCHEMA) -> dict:
     schema = validate_identifier(schema, "schema")
@@ -310,7 +332,9 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
         'TRIM(card."number") <> \'\'',
         'card."check" IS NOT TRUE',
     ]
-    params: dict[str, object] = {"limit": payload.max_checks}
+    last_card_record_id, last_page = await fraud_scan_cursor(session)
+    params: dict[str, object] = {"limit": payload.max_checks, "last_card_record_id": last_card_record_id}
+    conditions.append('card."record_id" > :last_card_record_id')
     if payload.customer_record_id is not None:
         conditions.append('c."record_id" = :customer_record_id')
         params["customer_record_id"] = payload.customer_record_id
@@ -334,14 +358,32 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
                 FROM importacao_transacoes.customer c
                 INNER JOIN importacao_transacoes.card card ON card."customer_id" = c."record_id"
                 WHERE {' AND '.join(conditions)}
-                ORDER BY c."record_id", card."record_id" LIMIT :limit'''),
+                ORDER BY card."record_id" LIMIT :limit'''),
         params,
     )
     candidates = [dict(row) for row in result.mappings().all()]
+    if not candidates and last_card_record_id > 0:
+        last_card_record_id = 0
+        last_page = 0
+        params["last_card_record_id"] = 0
+        result = await session.execute(
+            text(f'''SELECT c."record_id", c."name", c."email", c."document_number",
+                           card."customer_id" AS linked_customer_id,
+                           card."record_id" AS card_record_id, card."number" AS card_number,
+                           card."brand" AS local_card_brand, card."check" AS card_check
+                    FROM importacao_transacoes.customer c
+                    INNER JOIN importacao_transacoes.card card ON card."customer_id" = c."record_id"
+                    WHERE {' AND '.join(conditions)}
+                    ORDER BY card."record_id" LIMIT :limit'''),
+            params,
+        )
+        candidates = [dict(row) for row in result.mappings().all()]
     checked = 0
     async with httpx.AsyncClient(timeout=settings.querybuscas_timeout_seconds) as client:
         await querybuscas_login(client)
         for candidate in candidates:
+            last_page += 1
+            await save_fraud_scan_cursor(session, int(candidate["card_record_id"]), last_page)
             document = re.sub(r"\D", "", str(candidate["document_number"]))
             if not document:
                 continue
