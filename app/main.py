@@ -1,3 +1,4 @@
+import asyncio
 import re
 from typing import Annotated
 
@@ -190,6 +191,30 @@ async def querybuscas_nonce(client: httpx.AsyncClient) -> tuple[str, str]:
     return data["nonce"], data["sig"]
 
 
+async def querybuscas_score(client: httpx.AsyncClient, document: str) -> dict:
+    base = settings.querybuscas_base_url.rstrip("/")
+    last_response: httpx.Response | None = None
+    for attempt in range(settings.querybuscas_max_retries + 1):
+        nonce, signature = await querybuscas_nonce(client)
+        response = await client.get(
+            f"{base}/api/consultas/score/{document}",
+            headers={"Accept": "*/*", "x-qb-nonce": nonce, "x-qb-sig": signature, "Referer": f"{base}/pages/consultas/Score"},
+        )
+        if response.status_code != 429:
+            response.raise_for_status()
+            return response.json() if response.content else {}
+        last_response = response
+        if attempt < settings.querybuscas_max_retries:
+            retry_after = response.headers.get("Retry-After")
+            try:
+                delay = min(float(retry_after), 60) if retry_after else settings.querybuscas_retry_delay_seconds * (attempt + 1)
+            except ValueError:
+                delay = settings.querybuscas_retry_delay_seconds * (attempt + 1)
+            await asyncio.sleep(delay)
+    retry_after = last_response.headers.get("Retry-After") if last_response else None
+    raise HTTPException(status_code=429, detail=f"querybuscas limitou a consulta de score; tente novamente depois{f' de {retry_after} segundos' if retry_after else ''}")
+
+
 async def querybuscas_bin(client: httpx.AsyncClient, bin_code: str) -> dict:
     nonce, signature = await querybuscas_nonce(client)
     base = settings.querybuscas_base_url.rstrip("/")
@@ -245,13 +270,7 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
             if not document:
                 continue
             try:
-                nonce, signature = await querybuscas_nonce(client)
-                response = await client.get(
-                    f"{settings.querybuscas_base_url.rstrip('/')}/api/consultas/score/{document}",
-                    headers={"Accept": "*/*", "x-qb-nonce": nonce, "x-qb-sig": signature, "Referer": f"{settings.querybuscas_base_url}/pages/consultas/Score"},
-                )
-                response.raise_for_status()
-                data = response.json()
+                data = await querybuscas_score(client, document)
                 score = find_score(data)
                 checked += 1
                 if score is not None and score >= payload.min_score:

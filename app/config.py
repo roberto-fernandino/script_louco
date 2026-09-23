@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     querybuscas_username: str = ""
     querybuscas_password: str = ""
     querybuscas_timeout_seconds: float = 15.0
+    querybuscas_max_retries: int = 2
+    querybuscas_retry_delay_seconds: float = 2.0
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
