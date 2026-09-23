@@ -1,0 +1,13 @@
+{
+  "name": "transactions-query-monorepo",
+  "private": true,
+  "workspaces": ["apps/web"],
+  "scripts": {
+    "dev": "concurrently \"uvicorn app.main:app --reload\" \"npm --prefix apps/web run dev\"",
+    "dev:web": "npm --prefix apps/web run dev",
+    "build": "npm --prefix apps/web run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
