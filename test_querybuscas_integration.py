@@ -18,6 +18,9 @@ import re
 import sys
 
 import httpx
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 def digits(value: str) -> str:
