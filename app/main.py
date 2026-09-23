@@ -290,10 +290,11 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
         params["card_brand"] = f"%{payload.card_brand}%"
     result = await session.execute(
                 text(f'''SELECT c."record_id", c."name", c."email", c."document_number",
+                               card."customer_id" AS linked_customer_id,
                                card."record_id" AS card_record_id, card."number" AS card_number,
                                card."brand" AS local_card_brand, card."check" AS card_check
                 FROM importacao_transacoes.customer c
-                LEFT JOIN importacao_transacoes.card card ON card."customer_id" = c."record_id"
+                INNER JOIN importacao_transacoes.card card ON card."customer_id" = c."record_id"
                 WHERE {' AND '.join(conditions)}
                 ORDER BY c."record_id", card."record_id" LIMIT :limit'''),
         params,
