@@ -54,4 +54,13 @@ As rotas genéricas usam `importacao_transacoes` por padrão. Para outro schema 
 
 Configure no `.env` as credenciais do `querybuscas` (`QUERYBUSCAS_USERNAME` e `QUERYBUSCAS_PASSWORD`). O backend segue o mesmo fluxo do `check_bins.py`: login, cookie de sessão, nonce/sig novo e consulta do score/BIN. O score usa a escala de `0` a `1000`; o botão **Buscar fraude** consulta uma transação por vez até encontrar uma acima do limite e permite marcar o cartão como verificado. As credenciais devem permanecer somente no backend e nunca ser commitadas.
 
+Para testar a integração diretamente:
+
+```bash
+source .venv/bin/activate
+export QUERYBUSCAS_USERNAME='seu_usuario'
+export QUERYBUSCAS_PASSWORD='sua_senha'
+python3 test_querybuscas_integration.py 09386765632 --card 5502091234567890
+```
+
 Os campos de cartão são dados sensíveis. Restrinja o acesso à API e, em produção, considere mascarar `number` e remover `cvv` das respostas.
