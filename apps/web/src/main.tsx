@@ -2,8 +2,20 @@ import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
-const API = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+const API = (import.meta.env.VITE_API_URL ?? "/api").replace(/\/$/, "");
 type Row = Record<string, unknown>;
+
+async function request(path: string): Promise<any> {
+  try {
+    const response = await fetch(`${API}${path}`);
+    const body = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(body?.detail ?? `API respondeu com HTTP ${response.status}`);
+    return body;
+  } catch (error) {
+    if (error instanceof TypeError) throw new Error(`Não foi possível conectar à API em ${API}.`);
+    throw error;
+  }
+}
 
 function App() {
   const [tables, setTables] = useState<string[]>([]);
@@ -17,9 +29,7 @@ function App() {
   const limit = 50;
 
   async function loadTables() {
-    const response = await fetch(`${API}/tables`);
-    if (!response.ok) throw new Error("Não foi possível carregar as tabelas.");
-    const data = await response.json();
+    const data = await request("/tables");
     setTables(data.tables);
     if (data.tables.length && !table) setTable(data.tables[0]);
   }
@@ -30,9 +40,7 @@ function App() {
     try {
       const params = new URLSearchParams({ limit: String(limit), offset: String(nextOffset) });
       if (search) params.set("search", search);
-      const response = await fetch(`${API}/tables/${encodeURIComponent(table)}/rows?${params}`);
-      if (!response.ok) throw new Error("Não foi possível consultar a tabela.");
-      const data = await response.json();
+      const data = await request(`/tables/${encodeURIComponent(table)}/rows?${params}`);
       setRows(data.items); setColumns(data.columns); setOffset(nextOffset);
     } catch (err) { setError(err instanceof Error ? err.message : "Erro desconhecido."); }
     finally { setLoading(false); }
