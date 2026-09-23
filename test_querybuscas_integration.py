@@ -16,11 +16,12 @@ import json
 import os
 import re
 import sys
+from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 
 def digits(value: str) -> str:
