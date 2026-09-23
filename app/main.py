@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,12 +16,16 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()],
     allow_credentials=True,
-    allow_methods=["GET"],
+    allow_methods=["GET", "PATCH"],
     allow_headers=["*"],
 )
 Session = Annotated[AsyncSession, Depends(get_session)]
 DEFAULT_SCHEMA = "importacao_transacoes"
 IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
+
+
+class CheckUpdate(BaseModel):
+    check: bool
 
 
 def rows(result) -> list[dict]:
@@ -113,6 +118,22 @@ async def query_table(
         "limit": limit,
         "offset": offset,
     }
+
+
+@app.patch("/cards/{record_id}/check")
+async def update_card_check(record_id: int, payload: CheckUpdate, session: Session) -> dict:
+    result = await session.execute(
+        text('''UPDATE importacao_transacoes.card
+                SET "check" = :check
+                WHERE "record_id" = :record_id
+                RETURNING "record_id", "customer_id", "check"'''),
+        {"record_id": record_id, "check": payload.check},
+    )
+    card = result.mappings().first()
+    if card is None:
+        raise HTTPException(status_code=404, detail="Card not found")
+    await session.commit()
+    return dict(card)
 
 
 @app.get("/health")
