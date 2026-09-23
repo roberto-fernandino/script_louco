@@ -44,7 +44,7 @@ A rota `POST /cards/check` recebe `{ "number": "..." }` e marca o campo `check` 
 - `GET /cards` — filtros `customer_id`, `record_id`, `brand`, `limit`, `offset`
 - `GET /tables` — lista todas as tabelas do schema configurado
 - `GET /tables/{table}/columns` — lista as colunas de qualquer tabela
-- `GET /tables/{table}/rows` — consulta qualquer tabela com `search`, `order_by`, `descending`, `limit` e `offset`
+- `GET /tables/{table}/rows` — consulta qualquer tabela filtrando por `filter_column` e `filter_value`, além de `order_by`, `descending`, `limit` e `offset`
 - `PATCH /cards/{record_id}/check` — altera o campo `check` do cartão
 - `POST /fraud/search` — consulta sequencialmente cartões ainda não verificados (`check != true`) e para no primeiro score acima do limite; depois consulta também o BIN do cartão
 
@@ -52,7 +52,7 @@ As rotas genéricas usam `importacao_transacoes` por padrão. Para outro schema 
 
 ## Consulta de fraude
 
-Configure no `.env` as credenciais do `querybuscas` (`QUERYBUSCAS_USERNAME` e `QUERYBUSCAS_PASSWORD`). O backend segue o mesmo fluxo do `check_bins.py`: login, cookie de sessão, nonce/sig novo e consulta do score/BIN. O score usa a escala de `0` a `1000`; o botão **Buscar fraude** consulta uma transação por vez até encontrar uma acima do limite e permite marcar o cartão como verificado. As credenciais devem permanecer somente no backend e nunca ser commitadas.
+Configure no `.env` as credenciais do `querybuscas` (`QUERYBUSCAS_USERNAME` e `QUERYBUSCAS_PASSWORD`). O backend segue o mesmo fluxo do `check_bins.py`: login, cookie de sessão, nonce/sig novo e consulta do score/BIN. O score usa a escala de `0` a `1000`; o botão **Buscar fraude** filtra por campos do cliente e do card relacionado, consulta um card não verificado por vez até encontrar um acima do limite e permite marcá-lo como verificado. As credenciais devem permanecer somente no backend e nunca ser commitadas.
 
 Para testar a integração diretamente:
 

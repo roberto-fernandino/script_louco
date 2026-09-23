@@ -34,7 +34,11 @@ class CheckUpdate(BaseModel):
 class FraudSearchRequest(BaseModel):
     min_score: float = 800
     max_checks: int = 100
-    search: str | None = None
+    customer_record_id: int | None = None
+    customer_name: str | None = None
+    customer_document: str | None = None
+    card_record_id: int | None = None
+    card_brand: str | None = None
 
 
 def rows(result) -> list[dict]:
@@ -87,7 +91,8 @@ async def query_table(
     table: str,
     session: Session,
     schema: str = DEFAULT_SCHEMA,
-    search: str | None = None,
+    filter_column: str | None = None,
+    filter_value: str | None = None,
     order_by: str | None = None,
     descending: bool = False,
     limit: int = Query(default=settings.default_page_size, ge=1, le=settings.max_page_size),
@@ -100,10 +105,12 @@ async def query_table(
     params: dict[str, object] = {"limit": limit, "offset": offset}
     conditions: list[str] = []
 
-    if search:
-        searchable = [f'"{column}"::text ILIKE :search' for column in columns]
-        conditions.append(f"({' OR '.join(searchable)})")
-        params["search"] = f"%{search}%"
+    if filter_column and filter_value:
+        filter_column = validate_identifier(filter_column, "filter_column")
+        if filter_column not in columns:
+            raise HTTPException(status_code=400, detail="filter_column must be a column from the selected table")
+        conditions.append(f'"{filter_column}"::text ILIKE :filter_value')
+        params["filter_value"] = f"%{filter_value}%"
     if order_by:
         order_by = validate_identifier(order_by, "order_by")
         if order_by not in columns:
@@ -266,9 +273,21 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
         'card."check" IS NOT TRUE',
     ]
     params: dict[str, object] = {"limit": payload.max_checks}
-    if payload.search:
-        conditions.append('(c."name" ILIKE :search OR c."email" ILIKE :search OR c."document_number" ILIKE :search)')
-        params["search"] = f"%{payload.search}%"
+    if payload.customer_record_id is not None:
+        conditions.append('c."record_id" = :customer_record_id')
+        params["customer_record_id"] = payload.customer_record_id
+    if payload.customer_name:
+        conditions.append('c."name" ILIKE :customer_name')
+        params["customer_name"] = f"%{payload.customer_name}%"
+    if payload.customer_document:
+        conditions.append('c."document_number" ILIKE :customer_document')
+        params["customer_document"] = f"%{payload.customer_document}%"
+    if payload.card_record_id is not None:
+        conditions.append('card."record_id" = :card_record_id')
+        params["card_record_id"] = payload.card_record_id
+    if payload.card_brand:
+        conditions.append('card."brand" ILIKE :card_brand')
+        params["card_brand"] = f"%{payload.card_brand}%"
     result = await session.execute(
                 text(f'''SELECT c."record_id", c."name", c."email", c."document_number",
                                card."record_id" AS card_record_id, card."number" AS card_number,

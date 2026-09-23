@@ -23,11 +23,15 @@ function App() {
   const [rows, setRows] = useState<Row[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
   const [search, setSearch] = useState("");
+  const [filterColumn, setFilterColumn] = useState("");
+  const [filterValue, setFilterValue] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [offset, setOffset] = useState(0);
   const [minScore, setMinScore] = useState("800");
   const [fraudSearch, setFraudSearch] = useState("");
+  const [fraudDocument, setFraudDocument] = useState("");
+  const [fraudBrand, setFraudBrand] = useState("");
   const [fraudResult, setFraudResult] = useState<Row | null>(null);
   const limit = 50;
 
@@ -42,7 +46,7 @@ function App() {
     setLoading(true); setError("");
     try {
       const params = new URLSearchParams({ limit: String(limit), offset: String(nextOffset) });
-      if (search) params.set("search", search);
+      if (filterColumn && filterValue) { params.set("filter_column", filterColumn); params.set("filter_value", filterValue); }
       const data = await request(`/tables/${encodeURIComponent(table)}/rows?${params}`);
       setRows(data.items); setColumns(data.columns); setOffset(nextOffset);
     } catch (err) { setError(err instanceof Error ? err.message : "Erro desconhecido."); }
@@ -66,7 +70,7 @@ function App() {
   async function searchFraud() {
     setLoading(true); setError(""); setFraudResult(null);
     try {
-      const data = await request("/fraud/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ min_score: Number(minScore), search: fraudSearch || null }) });
+      const data = await request("/fraud/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ min_score: Number(minScore), customer_name: fraudSearch || null, customer_document: fraudDocument || null, card_brand: fraudBrand || null }) });
       setFraudResult(data);
     } catch (err) { setError(err instanceof Error ? err.message : "Não foi possível consultar fraude."); }
     finally { setLoading(false); }
@@ -79,10 +83,10 @@ function App() {
     <header><div><span className="eyebrow">TRANSAÇÕES</span><h1>Explorador de dados</h1><p>Consulte as tabelas disponíveis no PostgreSQL.</p></div><span className="status">● API local</span></header>
     <section className="toolbar">
       <label>Tabela<select value={table} onChange={(event) => setTable(event.target.value)}>{tables.map((name) => <option key={name}>{name}</option>)}</select></label>
-      <label className="search">Buscar<input value={search} onChange={(event) => setSearch(event.target.value)} onKeyDown={(event) => event.key === "Enter" && loadRows(0)} placeholder="Digite e pressione Enter" /></label>
+      <label>Coluna<select value={filterColumn} onChange={(event) => setFilterColumn(event.target.value)}><option value="">Selecione uma coluna</option>{columns.map((column) => <option key={column}>{column}</option>)}</select></label><label className="search">Valor<input value={filterValue} onChange={(event) => setFilterValue(event.target.value)} onKeyDown={(event) => event.key === "Enter" && loadRows(0)} placeholder="Filtrar pela coluna selecionada" /></label>
       <button onClick={() => loadRows(0)} disabled={loading}>{loading ? "Carregando..." : "Consultar"}</button>
     </section>
-    <section className="fraud-box"><div><strong>Buscar possível fraude</strong><p>Consulta clientes no querybuscas até encontrar um score acima do limite.</p></div><input type="number" min="0" max="100" value={minScore} onChange={(event) => setMinScore(event.target.value)} aria-label="Score mínimo" /><input value={fraudSearch} onChange={(event) => setFraudSearch(event.target.value)} placeholder="Nome, e-mail ou documento (opcional)" /><button onClick={searchFraud} disabled={loading}>Buscar fraude</button></section>
+    <section className="fraud-box"><div><strong>Buscar possível fraude</strong><p>Consulta somente cards não verificados ligados ao cliente filtrado.</p></div><input type="number" min="0" max="1000" value={minScore} onChange={(event) => setMinScore(event.target.value)} aria-label="Score mínimo" /><input value={fraudSearch} onChange={(event) => setFraudSearch(event.target.value)} placeholder="Nome do cliente" /><input value={fraudDocument} onChange={(event) => setFraudDocument(event.target.value)} placeholder="Documento do cliente" /><input value={fraudBrand} onChange={(event) => setFraudBrand(event.target.value)} placeholder="Brand do card" /><button onClick={searchFraud} disabled={loading}>Buscar fraude</button></section>
     {fraudResult && <div className={fraudResult.found ? "fraud-result found" : "fraud-result"}>{fraudResult.found ? <><strong>Possível fraude encontrada</strong><br />Score máximo: {String(fraudResult.score)} — Cliente: {String((fraudResult.customer as Row)?.name ?? "cliente")}<br />BIN: {String((fraudResult.bin as Row)?.BIN ?? "não consultado")} — Bandeira: {String((fraudResult.bin as Row)?.BANDEIRA ?? "não identificada")} — Banco: {String((fraudResult.bin as Row)?.BANCO ?? "não identificado")}<br /><button disabled={Boolean((fraudResult.customer as Row)?.card_check)} onClick={() => updateCheck((fraudResult.customer as Row)?.card_record_id, true)}>{(fraudResult.customer as Row)?.card_check ? "Já marcado" : "Marcar como verificado"}</button><pre className="fraud-data">{JSON.stringify({ cliente: fraudResult.customer, scores: fraudResult.scores, score_querybuscas: fraudResult.querybuscas_score, bin_querybuscas: fraudResult.bin }, null, 2)}</pre></> : `Nenhum score acima do limite encontrado após ${String(fraudResult.checked)} consulta(s).`}</div>}
     {error && <div className="error">{error}</div>}
     <section className="card"><div className="card-head"><strong>{table || "Nenhuma tabela"}</strong><span>{rows.length} registros exibidos</span></div>
