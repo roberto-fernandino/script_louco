@@ -52,6 +52,6 @@ As rotas genéricas usam `importacao_transacoes` por padrão. Para outro schema 
 
 ## Consulta de fraude
 
-Configure no `.env` as credenciais do `querybuscas` (`QUERYBUSCAS_COOKIE`, e opcionalmente `QUERYBUSCAS_NONCE` e `QUERYBUSCAS_SIGNATURE`). O botão **Buscar fraude** da UI envia `min_score` e opcionalmente um filtro por nome, e-mail ou documento. As credenciais devem permanecer somente no backend e nunca ser commitadas.
+Configure no `.env` as credenciais do `querybuscas` (`QUERYBUSCAS_USERNAME` e `QUERYBUSCAS_PASSWORD`). O backend segue o mesmo fluxo do `check_bins.py`: login, cookie de sessão, nonce/sig novo e consulta do score. O botão **Buscar fraude** da UI envia `min_score` e opcionalmente um filtro por nome, e-mail ou documento. As credenciais devem permanecer somente no backend e nunca ser commitadas.
 
 Os campos de cartão são dados sensíveis. Restrinja o acesso à API e, em produção, considere mascarar `number` e remover `cvv` das respostas.

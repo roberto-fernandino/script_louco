@@ -10,10 +10,9 @@ class Settings(BaseSettings):
     default_page_size: int = 50
     max_page_size: int = 200
     cors_origins: str = "http://localhost:5173"
-    querybuscas_base_url: str = "https://querybuscas.com/api/consultas/score"
-    querybuscas_cookie: str = ""
-    querybuscas_nonce: str = ""
-    querybuscas_signature: str = ""
+    querybuscas_base_url: str = "https://querybuscas.com"
+    querybuscas_username: str = ""
+    querybuscas_password: str = ""
     querybuscas_timeout_seconds: float = 15.0
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")

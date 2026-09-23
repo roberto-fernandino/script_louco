@@ -162,14 +162,42 @@ def find_score(value: object) -> float | None:
     return None
 
 
+async def querybuscas_login(client: httpx.AsyncClient) -> None:
+    base = settings.querybuscas_base_url.rstrip("/")
+    response = await client.post(
+        f"{base}/api/auth/login",
+        json={"username": settings.querybuscas_username, "password": settings.querybuscas_password},
+        headers={"Accept": "*/*", "Origin": base, "Referer": f"{base}/"},
+    )
+    data = response.json() if response.content else {}
+    if response.status_code == 429:
+        raise HTTPException(status_code=429, detail="querybuscas bloqueou novas tentativas de login temporariamente")
+    if response.status_code == 403 and data.get("statusMessage") == "PlanExpired":
+        raise HTTPException(status_code=403, detail="Plano do querybuscas expirado")
+    if response.status_code != 200 or not data.get("success"):
+        raise HTTPException(status_code=502, detail=f"Login no querybuscas falhou: {data.get('message') or data.get('statusMessage') or response.status_code}")
+
+
+async def querybuscas_nonce(client: httpx.AsyncClient) -> tuple[str, str]:
+    base = settings.querybuscas_base_url.rstrip("/")
+    response = await client.post(
+        f"{base}/api/consultas/nonce",
+        headers={"Accept": "*/*", "Origin": base, "Referer": f"{base}/pages/consultas/Score"},
+    )
+    data = response.json() if response.content else {}
+    if response.status_code != 200 or "nonce" not in data or "sig" not in data:
+        raise HTTPException(status_code=502, detail=f"Nonce do querybuscas falhou ({response.status_code})")
+    return data["nonce"], data["sig"]
+
+
 @app.post("/fraud/search")
 async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
     if payload.min_score < 0 or payload.min_score > 100:
         raise HTTPException(status_code=400, detail="min_score must be between 0 and 100")
     if payload.max_checks < 1 or payload.max_checks > 1000:
         raise HTTPException(status_code=400, detail="max_checks must be between 1 and 1000")
-    if not settings.querybuscas_cookie:
-        raise HTTPException(status_code=503, detail="QUERYBUSCAS_COOKIE is not configured")
+    if not settings.querybuscas_username or not settings.querybuscas_password:
+        raise HTTPException(status_code=503, detail="QUERYBUSCAS_USERNAME e QUERYBUSCAS_PASSWORD não configurados")
 
     conditions = ['"document_number" IS NOT NULL', 'TRIM("document_number") <> \'\'']
     params: dict[str, object] = {"limit": payload.max_checks}
@@ -184,20 +212,19 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
         params,
     )
     candidates = [dict(row) for row in result.mappings().all()]
-    headers = {"Accept": "*/*", "Cookie": settings.querybuscas_cookie}
-    if settings.querybuscas_nonce:
-        headers["x-qb-nonce"] = settings.querybuscas_nonce
-    if settings.querybuscas_signature:
-        headers["x-qb-sig"] = settings.querybuscas_signature
-
     checked = 0
     async with httpx.AsyncClient(timeout=settings.querybuscas_timeout_seconds) as client:
+        await querybuscas_login(client)
         for candidate in candidates:
             document = re.sub(r"\D", "", str(candidate["document_number"]))
             if not document:
                 continue
             try:
-                response = await client.get(f"{settings.querybuscas_base_url.rstrip('/')}/{document}", headers=headers)
+                nonce, signature = await querybuscas_nonce(client)
+                response = await client.get(
+                    f"{settings.querybuscas_base_url.rstrip('/')}/api/consultas/score/{document}",
+                    headers={"Accept": "*/*", "x-qb-nonce": nonce, "x-qb-sig": signature, "Referer": f"{settings.querybuscas_base_url}/pages/consultas/Score"},
+                )
                 response.raise_for_status()
                 data = response.json()
                 score = find_score(data)
