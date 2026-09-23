@@ -52,6 +52,8 @@ As rotas genéricas usam `importacao_transacoes` por padrão. Para outro schema 
 
 ## Consulta de fraude
 
+O resultado também inclui `related_data`, com todas as colunas do cliente, do card e das demais tabelas que possuam `customer_id`. O número do cartão é mascarado e o CVV não é retornado.
+
 Configure no `.env` as credenciais do `querybuscas` (`QUERYBUSCAS_USERNAME` e `QUERYBUSCAS_PASSWORD`). O backend segue o mesmo fluxo do `check_bins.py`: login, cookie de sessão, nonce/sig novo e consulta do score/BIN. O score usa a escala de `0` a `1000`; o botão **Buscar fraude** filtra por campos do cliente e do card relacionado, consulta um card não verificado por vez até encontrar um acima do limite e permite marcá-lo como verificado. As credenciais devem permanecer somente no backend e nunca ser commitadas.
 
 Para testar a integração diretamente:

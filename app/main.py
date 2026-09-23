@@ -65,6 +65,44 @@ async def table_columns(session: AsyncSession, table: str, schema: str = DEFAULT
     return columns
 
 
+async def related_customer_data(session: AsyncSession, customer_id: int, card_record_id: int) -> dict:
+    customer_result = await session.execute(
+        text('SELECT * FROM importacao_transacoes.customer WHERE "record_id" = :customer_id'),
+        {"customer_id": customer_id},
+    )
+    card_result = await session.execute(
+        text('SELECT * FROM importacao_transacoes.card WHERE "record_id" = :card_record_id'),
+        {"card_record_id": card_record_id},
+    )
+    card = dict(card_result.mappings().first() or {})
+    if "number" in card:
+        card["number"] = f"****{str(card['number'])[-4:]}" if card["number"] else None
+    card.pop("cvv", None)
+    related: dict[str, list[dict]] = {
+        "customer": [dict(customer_result.mappings().first() or {})],
+        "card": [card],
+    }
+    tables_result = await session.execute(
+        text("""SELECT DISTINCT table_name
+                FROM information_schema.columns
+                WHERE table_schema = :schema AND column_name = 'customer_id'
+                ORDER BY table_name"""),
+        {"schema": DEFAULT_SCHEMA},
+    )
+    for (table,) in tables_result.all():
+        if table == "card":
+            continue
+        columns = await table_columns(session, table)
+        selected = ", ".join(f'"{column}"' for column in columns)
+        result = await session.execute(
+            text(f'''SELECT {selected} FROM "{DEFAULT_SCHEMA}"."{table}"
+                    WHERE "customer_id" = :customer_id'''),
+            {"customer_id": customer_id},
+        )
+        related[table] = rows(result)
+    return related
+
+
 @app.get("/tables")
 async def list_tables(session: Session, schema: str = DEFAULT_SCHEMA) -> dict:
     schema = validate_identifier(schema, "schema")
@@ -325,6 +363,7 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
                         "customer": {key: value for key, value in candidate.items() if key not in {"card_number"}},
                         "querybuscas_score": data,
                         "bin": bin_data,
+                        "related_data": await related_customer_data(session, int(candidate["record_id"]), int(candidate["card_record_id"])),
                     }
             except (httpx.HTTPError, ValueError) as error:
                 raise HTTPException(status_code=502, detail=f"querybuscas request failed: {error}") from error
