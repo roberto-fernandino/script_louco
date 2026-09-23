@@ -72,10 +72,10 @@ class QueryBuscas:
 
     def bin(self, card_or_bin: str) -> dict:
         code = digits(card_or_bin)
-        if len(code) > 8:
-            code = code[:8]
-        if not 6 <= len(code) <= 8:
-            raise ValueError("BIN deve ter entre 6 e 8 dígitos")
+        if len(code) > 6:
+            code = code[:6]
+        if len(code) != 6:
+            raise ValueError("BIN deve ter exatamente 6 dígitos")
         nonce, signature = self.nonce("Bin")
         response = self.client.get(
             f"{self.base}/api/consultas/bin/{code}",

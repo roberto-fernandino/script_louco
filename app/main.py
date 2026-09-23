@@ -296,7 +296,7 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
                     bin_data = None
                     card_number = re.sub(r"\D", "", str(candidate.get("card_number") or ""))
                     if len(card_number) >= 6:
-                        bin_data = await querybuscas_bin(client, card_number[:8])
+                        bin_data = await querybuscas_bin(client, card_number[:6])
                     return {
                         "found": True,
                         "score": score,
