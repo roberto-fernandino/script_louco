@@ -23,6 +23,19 @@ uvicorn app.main:app --reload
 UI: `http://localhost:5173`.
 Documentação da API: `http://localhost:8000/docs`.
 
+## API NestJS/TypeORM
+
+O backend NestJS fica em `api/`, enquanto o frontend existente continua em `apps/web/`.
+
+```bash
+cd api
+npm install
+npm run migration:run
+npm run start:dev
+```
+
+A rota `POST /cards/check` recebe `{ "number": "..." }` e marca o campo `check` como `true`. A API tem os módulos `CardsModule` e `CustomerModule`, entidades em `entities/`, interfaces em `interfaces/` e repositórios TypeORM em `repositorys/`.
+
 ## Rotas
 
 - `GET /health`
