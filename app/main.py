@@ -1,5 +1,6 @@
 import asyncio
 import re
+import time
 from typing import Annotated
 
 import httpx
@@ -144,32 +145,50 @@ async def update_card_check(record_id: int, payload: CheckUpdate, session: Sessi
     return dict(card)
 
 
-def find_score(value: object) -> float | None:
+def find_scores(value: object) -> dict[str, float]:
+    scores: dict[str, float] = {}
     if isinstance(value, dict):
         for key, item in value.items():
-            if str(key).lower() in {"score", "fraud_score", "risco", "risk_score"}:
+            normalized_key = str(key).upper()
+            if normalized_key in {"CSB8", "CSBA", "SCORE", "FRAUD_SCORE", "RISCO", "RISK_SCORE"}:
                 try:
-                    return float(item)
+                    scores[str(key)] = float(item)
                 except (TypeError, ValueError):
                     pass
-            found = find_score(item)
-            if found is not None:
-                return found
+            scores.update(find_scores(item))
     elif isinstance(value, list):
         for item in value:
-            found = find_score(item)
-            if found is not None:
-                return found
-    return None
+            scores.update(find_scores(item))
+    return scores
+
+
+def rate_limit_delay(response: httpx.Response, attempt: int) -> float:
+    retry_after = response.headers.get("Retry-After")
+    if retry_after:
+        try:
+            return max(0.0, min(float(retry_after), 300.0))
+        except ValueError:
+            pass
+    reset = response.headers.get("X-RateLimit-Reset")
+    if reset:
+        try:
+            return max(0.0, min(float(reset) - time.time(), 300.0))
+        except ValueError:
+            pass
+    return settings.querybuscas_retry_delay_seconds * (attempt + 1)
 
 
 async def querybuscas_login(client: httpx.AsyncClient) -> None:
     base = settings.querybuscas_base_url.rstrip("/")
-    response = await client.post(
-        f"{base}/api/auth/login",
-        json={"username": settings.querybuscas_username, "password": settings.querybuscas_password},
-        headers={"Accept": "*/*", "Origin": base, "Referer": f"{base}/"},
-    )
+    for attempt in range(settings.querybuscas_max_retries + 1):
+        response = await client.post(
+            f"{base}/api/auth/login",
+            json={"username": settings.querybuscas_username, "password": settings.querybuscas_password},
+            headers={"Accept": "*/*", "Origin": base, "Referer": f"{base}/"},
+        )
+        if response.status_code != 429 or attempt >= settings.querybuscas_max_retries:
+            break
+        await asyncio.sleep(rate_limit_delay(response, attempt))
     data = response.json() if response.content else {}
     if response.status_code == 429:
         raise HTTPException(status_code=429, detail="querybuscas bloqueou novas tentativas de login temporariamente")
@@ -181,10 +200,14 @@ async def querybuscas_login(client: httpx.AsyncClient) -> None:
 
 async def querybuscas_nonce(client: httpx.AsyncClient) -> tuple[str, str]:
     base = settings.querybuscas_base_url.rstrip("/")
-    response = await client.post(
-        f"{base}/api/consultas/nonce",
-        headers={"Accept": "*/*", "Origin": base, "Referer": f"{base}/pages/consultas/Score"},
-    )
+    for attempt in range(settings.querybuscas_max_retries + 1):
+        response = await client.post(
+            f"{base}/api/consultas/nonce",
+            headers={"Accept": "*/*", "Origin": base, "Referer": f"{base}/pages/consultas/Score"},
+        )
+        if response.status_code != 429 or attempt >= settings.querybuscas_max_retries:
+            break
+        await asyncio.sleep(rate_limit_delay(response, attempt))
     data = response.json() if response.content else {}
     if response.status_code != 200 or "nonce" not in data or "sig" not in data:
         raise HTTPException(status_code=502, detail=f"Nonce do querybuscas falhou ({response.status_code})")
@@ -205,12 +228,7 @@ async def querybuscas_score(client: httpx.AsyncClient, document: str) -> dict:
             return response.json() if response.content else {}
         last_response = response
         if attempt < settings.querybuscas_max_retries:
-            retry_after = response.headers.get("Retry-After")
-            try:
-                delay = min(float(retry_after), 60) if retry_after else settings.querybuscas_retry_delay_seconds * (attempt + 1)
-            except ValueError:
-                delay = settings.querybuscas_retry_delay_seconds * (attempt + 1)
-            await asyncio.sleep(delay)
+            await asyncio.sleep(rate_limit_delay(response, attempt))
     retry_after = last_response.headers.get("Retry-After") if last_response else None
     raise HTTPException(status_code=429, detail=f"querybuscas limitou a consulta de score; tente novamente depois{f' de {retry_after} segundos' if retry_after else ''}")
 
@@ -254,7 +272,7 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
     result = await session.execute(
                 text(f'''SELECT c."record_id", c."name", c."email", c."document_number",
                                card."record_id" AS card_record_id, card."number" AS card_number,
-                               card."brand" AS local_card_brand
+                               card."brand" AS local_card_brand, card."check" AS card_check
                 FROM importacao_transacoes.customer c
                 LEFT JOIN importacao_transacoes.card card ON card."customer_id" = c."record_id"
                 WHERE {' AND '.join(conditions)}
@@ -271,7 +289,8 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
                 continue
             try:
                 data = await querybuscas_score(client, document)
-                score = find_score(data)
+                scores = find_scores(data)
+                score = max(scores.values()) if scores else None
                 checked += 1
                 if score is not None and score >= payload.min_score:
                     bin_data = None
@@ -281,9 +300,10 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
                     return {
                         "found": True,
                         "score": score,
+                        "scores": scores,
                         "checked": checked,
                         "customer": {key: value for key, value in candidate.items() if key not in {"card_number"}},
-                        "querybuscas": data,
+                        "querybuscas_score": data,
                         "bin": bin_data,
                     }
             except (httpx.HTTPError, ValueError) as error:
