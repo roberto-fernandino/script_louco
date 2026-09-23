@@ -1,7 +1,6 @@
 import asyncio
 import re
 import time
-from contextlib import asynccontextmanager
 from typing import Annotated
 
 import httpx
@@ -11,23 +10,13 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .backup import run_startup_backup
 from .config import get_settings
 from .database import get_session
 
 settings = get_settings()
 
 
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    # One database backup per API start; runs in the background so startup is not delayed.
-    backup_task = asyncio.create_task(run_startup_backup())
-    yield
-    if not backup_task.done():
-        backup_task.cancel()
-
-
-app = FastAPI(title=settings.app_name, version="1.0.0", debug=settings.debug, lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version="1.0.0", debug=settings.debug)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()],
