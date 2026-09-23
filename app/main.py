@@ -30,7 +30,7 @@ class CheckUpdate(BaseModel):
 
 
 class FraudSearchRequest(BaseModel):
-    min_score: float = 80
+    min_score: float = 800
     max_checks: int = 100
     search: str | None = None
 
@@ -208,14 +208,20 @@ async def querybuscas_bin(client: httpx.AsyncClient, bin_code: str) -> dict:
 
 @app.post("/fraud/search")
 async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
-    if payload.min_score < 0 or payload.min_score > 100:
-        raise HTTPException(status_code=400, detail="min_score must be between 0 and 100")
+    if payload.min_score < 0 or payload.min_score > 1000:
+        raise HTTPException(status_code=400, detail="min_score must be between 0 and 1000")
     if payload.max_checks < 1 or payload.max_checks > 1000:
         raise HTTPException(status_code=400, detail="max_checks must be between 1 and 1000")
     if not settings.querybuscas_username or not settings.querybuscas_password:
         raise HTTPException(status_code=503, detail="QUERYBUSCAS_USERNAME e QUERYBUSCAS_PASSWORD não configurados")
 
-    conditions = ['c."document_number" IS NOT NULL', 'TRIM(c."document_number") <> \'\'']
+    conditions = [
+        'c."document_number" IS NOT NULL',
+        'TRIM(c."document_number") <> \'\'',
+        'card."number" IS NOT NULL',
+        'TRIM(card."number") <> \'\'',
+        'card."check" IS NOT TRUE',
+    ]
     params: dict[str, object] = {"limit": payload.max_checks}
     if payload.search:
         conditions.append('(c."name" ILIKE :search OR c."email" ILIKE :search OR c."document_number" ILIKE :search)')

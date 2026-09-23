@@ -26,7 +26,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [offset, setOffset] = useState(0);
-  const [minScore, setMinScore] = useState("80");
+  const [minScore, setMinScore] = useState("800");
   const [fraudSearch, setFraudSearch] = useState("");
   const [fraudResult, setFraudResult] = useState<Row | null>(null);
   const limit = 50;
@@ -57,6 +57,7 @@ function App() {
         body: JSON.stringify({ check: checked }),
       });
       setRows((current) => current.map((row) => row.record_id === recordId ? { ...row, check: checked } : row));
+      setFraudResult((current) => { const customer = current?.customer as Row | undefined; return customer?.card_record_id === recordId ? { ...current, customer: { ...customer, check: checked } } : current; });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível atualizar o check.");
     }
@@ -82,7 +83,7 @@ function App() {
       <button onClick={() => loadRows(0)} disabled={loading}>{loading ? "Carregando..." : "Consultar"}</button>
     </section>
     <section className="fraud-box"><div><strong>Buscar possível fraude</strong><p>Consulta clientes no querybuscas até encontrar um score acima do limite.</p></div><input type="number" min="0" max="100" value={minScore} onChange={(event) => setMinScore(event.target.value)} aria-label="Score mínimo" /><input value={fraudSearch} onChange={(event) => setFraudSearch(event.target.value)} placeholder="Nome, e-mail ou documento (opcional)" /><button onClick={searchFraud} disabled={loading}>Buscar fraude</button></section>
-    {fraudResult && <div className={fraudResult.found ? "fraud-result found" : "fraud-result"}>{fraudResult.found ? <><strong>Possível fraude encontrada</strong><br />Score: {String(fraudResult.score)} — Cliente: {String((fraudResult.customer as Row)?.name ?? "cliente")}<br />BIN: {String((fraudResult.bin as Row)?.BIN ?? "não consultado")} — Bandeira: {String((fraudResult.bin as Row)?.BANDEIRA ?? "não identificada")} — Banco: {String((fraudResult.bin as Row)?.BANCO ?? "não identificado")}</> : `Nenhum score acima do limite encontrado após ${String(fraudResult.checked)} consulta(s).`}</div>}
+    {fraudResult && <div className={fraudResult.found ? "fraud-result found" : "fraud-result"}>{fraudResult.found ? <><strong>Possível fraude encontrada</strong><br />Score: {String(fraudResult.score)} — Cliente: {String((fraudResult.customer as Row)?.name ?? "cliente")}<br />BIN: {String((fraudResult.bin as Row)?.BIN ?? "não consultado")} — Bandeira: {String((fraudResult.bin as Row)?.BANDEIRA ?? "não identificada")} — Banco: {String((fraudResult.bin as Row)?.BANCO ?? "não identificado")}<br /><button disabled={Boolean((fraudResult.customer as Row)?.check)} onClick={() => updateCheck((fraudResult.customer as Row)?.card_record_id, true)}>{(fraudResult.customer as Row)?.check ? "Já marcado" : "Marcar como verificado"}</button></> : `Nenhum score acima do limite encontrado após ${String(fraudResult.checked)} consulta(s).`}</div>}
     {error && <div className="error">{error}</div>}
     <section className="card"><div className="card-head"><strong>{table || "Nenhuma tabela"}</strong><span>{rows.length} registros exibidos</span></div>
       <div className="table-wrap">{rows.length ? <table><thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{columns.map((column) => <td key={column}>{table === "card" && column === "check" ? <input type="checkbox" checked={Boolean(row[column])} onChange={(event) => updateCheck(row.record_id, event.target.checked)} aria-label={`Atualizar check do cartão ${String(row.record_id)}`} /> : String(row[column] ?? "—")}</td>)}</tr>)}</tbody></table> : <div className="empty">{loading ? "Consultando dados..." : "Nenhum registro encontrado."}</div>}</div>
