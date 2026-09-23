@@ -46,12 +46,12 @@ A rota `POST /cards/check` recebe `{ "number": "..." }` e marca o campo `check` 
 - `GET /tables/{table}/columns` — lista as colunas de qualquer tabela
 - `GET /tables/{table}/rows` — consulta qualquer tabela com `search`, `order_by`, `descending`, `limit` e `offset`
 - `PATCH /cards/{record_id}/check` — altera o campo `check` do cartão
-- `POST /fraud/search` — consulta o `querybuscas` até encontrar um score acima do limite
+- `POST /fraud/search` — consulta score e, ao encontrar um caso acima do limite, consulta também o BIN do cartão
 
 As rotas genéricas usam `importacao_transacoes` por padrão. Para outro schema permitido pelo usuário do banco, use o parâmetro `schema`.
 
 ## Consulta de fraude
 
-Configure no `.env` as credenciais do `querybuscas` (`QUERYBUSCAS_USERNAME` e `QUERYBUSCAS_PASSWORD`). O backend segue o mesmo fluxo do `check_bins.py`: login, cookie de sessão, nonce/sig novo e consulta do score. O botão **Buscar fraude** da UI envia `min_score` e opcionalmente um filtro por nome, e-mail ou documento. As credenciais devem permanecer somente no backend e nunca ser commitadas.
+Configure no `.env` as credenciais do `querybuscas` (`QUERYBUSCAS_USERNAME` e `QUERYBUSCAS_PASSWORD`). O backend segue o mesmo fluxo do `check_bins.py`: login, cookie de sessão, nonce/sig novo e consulta do score/BIN. O botão **Buscar fraude** da UI envia `min_score` e opcionalmente um filtro por nome, e-mail ou documento. As credenciais devem permanecer somente no backend e nunca ser commitadas.
 
 Os campos de cartão são dados sensíveis. Restrinja o acesso à API e, em produção, considere mascarar `number` e remover `cvv` das respostas.

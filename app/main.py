@@ -190,6 +190,22 @@ async def querybuscas_nonce(client: httpx.AsyncClient) -> tuple[str, str]:
     return data["nonce"], data["sig"]
 
 
+async def querybuscas_bin(client: httpx.AsyncClient, bin_code: str) -> dict:
+    nonce, signature = await querybuscas_nonce(client)
+    base = settings.querybuscas_base_url.rstrip("/")
+    response = await client.get(
+        f"{base}/api/consultas/bin/{bin_code}",
+        headers={"Accept": "*/*", "x-qb-nonce": nonce, "x-qb-sig": signature, "Referer": f"{base}/pages/consultas/Bin"},
+    )
+    data = response.json() if response.content else {}
+    if response.status_code == 403 and data.get("requireCaptcha"):
+        raise HTTPException(status_code=403, detail="querybuscas solicitou captcha para a consulta de BIN")
+    if response.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Consulta de BIN falhou ({response.status_code})")
+    data["BIN"] = data.get("BIN") or bin_code
+    return data
+
+
 @app.post("/fraud/search")
 async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
     if payload.min_score < 0 or payload.min_score > 100:
@@ -199,16 +215,19 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
     if not settings.querybuscas_username or not settings.querybuscas_password:
         raise HTTPException(status_code=503, detail="QUERYBUSCAS_USERNAME e QUERYBUSCAS_PASSWORD não configurados")
 
-    conditions = ['"document_number" IS NOT NULL', 'TRIM("document_number") <> \'\'']
+    conditions = ['c."document_number" IS NOT NULL', 'TRIM(c."document_number") <> \'\'']
     params: dict[str, object] = {"limit": payload.max_checks}
     if payload.search:
-        conditions.append('("name" ILIKE :search OR "email" ILIKE :search OR "document_number" ILIKE :search)')
+        conditions.append('(c."name" ILIKE :search OR c."email" ILIKE :search OR c."document_number" ILIKE :search)')
         params["search"] = f"%{payload.search}%"
     result = await session.execute(
-        text(f'''SELECT "record_id", "name", "email", "document_number"
-                FROM importacao_transacoes.customer
+                text(f'''SELECT c."record_id", c."name", c."email", c."document_number",
+                               card."record_id" AS card_record_id, card."number" AS card_number,
+                               card."brand" AS local_card_brand
+                FROM importacao_transacoes.customer c
+                LEFT JOIN importacao_transacoes.card card ON card."customer_id" = c."record_id"
                 WHERE {' AND '.join(conditions)}
-                ORDER BY "record_id" LIMIT :limit'''),
+                ORDER BY c."record_id", card."record_id" LIMIT :limit'''),
         params,
     )
     candidates = [dict(row) for row in result.mappings().all()]
@@ -230,7 +249,18 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
                 score = find_score(data)
                 checked += 1
                 if score is not None and score >= payload.min_score:
-                    return {"found": True, "score": score, "checked": checked, "customer": candidate, "querybuscas": data}
+                    bin_data = None
+                    card_number = re.sub(r"\D", "", str(candidate.get("card_number") or ""))
+                    if len(card_number) >= 6:
+                        bin_data = await querybuscas_bin(client, card_number[:8])
+                    return {
+                        "found": True,
+                        "score": score,
+                        "checked": checked,
+                        "customer": {key: value for key, value in candidate.items() if key not in {"card_number"}},
+                        "querybuscas": data,
+                        "bin": bin_data,
+                    }
             except (httpx.HTTPError, ValueError) as error:
                 raise HTTPException(status_code=502, detail=f"querybuscas request failed: {error}") from error
     return {"found": False, "score": None, "checked": checked, "customer": None}
