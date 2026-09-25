@@ -332,8 +332,11 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
         'TRIM(c."document_number") <> \'\'',
         'card."number" IS NOT NULL',
         'TRIM(card."number") <> \'\'',
-        'card."check" IS NOT TRUE',
     ]
+    # An explicit card lookup must also be able to render its full fraud result
+    # when the card was already checked; the normal scan still skips checked cards.
+    if payload.card_record_id is None:
+        conditions.append('card."check" IS NOT TRUE')
     last_card_record_id, last_page = await fraud_scan_cursor(session)
     params: dict[str, object] = {"limit": payload.max_checks, "last_card_record_id": last_card_record_id}
     conditions.append('card."record_id" > :last_card_record_id')
