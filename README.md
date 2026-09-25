@@ -54,7 +54,7 @@ As rotas genéricas usam `importacao_transacoes` por padrão. Para outro schema 
 
 O resultado também inclui `related_data`, com todas as colunas do cliente, do card e das demais tabelas que possuam `customer_id`. O número do cartão é mascarado e o CVV não é retornado.
 
-A busca mantém o cursor em `importacao_transacoes.fraud_scan_progress`, continua pelo próximo `card.record_id` e volta ao início somente quando chega ao fim dos cards elegíveis. As migrações formais estão em `migrations/001_fraud_scan_progress.sql` e `migrations/002_customer_scores.sql`.
+A busca mantém o cursor em `importacao_transacoes.fraud_scan_progress`, continua pelo próximo `card.record_id` e volta ao início somente quando chega ao fim dos cards elegíveis. As migrações de score também são executadas automaticamente quando a API FastAPI inicia; o SQL equivalente está em `migrations/002_customer_scores.sql`.
 
 Configure no `.env` `SNOOP_API_KEY` e, se necessário, `SNOOP_RATE_LIMIT_PER_SECOND` (padrão `15`). O backend chama `POST /api/rendaescore` em lotes de até 400 CPFs, persiste `score_csb8`, `score_csba` e suas faixas em `customer`, e só consulta novamente clientes sem score armazenado. O BIN usa `GET /api/query/bin`, sempre enviando a chave no header `x-api-key`. O score usa a escala de `0` a `1000`; o botão **Buscar fraude** filtra por campos do cliente e do card relacionado e permite marcá-lo como verificado. A chave deve permanecer somente no backend e nunca ser commitada.
 

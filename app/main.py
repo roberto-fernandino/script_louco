@@ -1,6 +1,7 @@
 import asyncio
 import re
 import time
+from contextlib import asynccontextmanager
 from typing import Annotated
 
 import httpx
@@ -11,12 +12,18 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import get_settings
-from .database import get_session
+from .database import get_session, run_startup_migrations
 
 settings = get_settings()
 
 
-app = FastAPI(title=settings.app_name, version="1.0.0", debug=settings.debug)
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    await run_startup_migrations()
+    yield
+
+
+app = FastAPI(title=settings.app_name, version="1.0.0", debug=settings.debug, lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()],
