@@ -1,8 +1,76 @@
 :root { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #e7edf5; background: #0d1117; font-size: 15px; }
-* { box-sizing: border-box; } body { margin: 0; } main { max-width: 1440px; margin: 0 auto; padding: 48px 32px; }
-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 36px; } .eyebrow { color: #73daca; font-size: 11px; letter-spacing: .18em; font-weight: 700; } h1 { margin: 8px 0; font-size: 34px; letter-spacing: -.04em; } p { color: #8c9aaa; margin: 0; } .status { color: #73daca; font-size: 13px; }
-.toolbar { display: flex; align-items: end; gap: 16px; padding: 20px; background: #151c25; border: 1px solid #263342; border-radius: 12px; margin-bottom: 20px; } label { display: flex; flex-direction: column; gap: 7px; color: #9eacbc; font-size: 12px; font-weight: 600; } .search { flex: 1; } input, select { min-width: 260px; border: 1px solid #344353; border-radius: 7px; background: #0e141b; color: #eef4fa; padding: 11px 12px; font: inherit; } button { border: 0; border-radius: 7px; background: #69d3c3; color: #09201e; padding: 12px 18px; font-weight: 700; cursor: pointer; } button:disabled { opacity: .45; cursor: not-allowed; }
-.fraud-box { display: flex; align-items: center; gap: 12px; padding: 16px 20px; background: #211d2c; border: 1px solid #604c80; border-radius: 12px; margin-bottom: 20px; } .fraud-box div { flex: 1; } .fraud-box p { margin-top: 5px; font-size: 12px; } .fraud-box input { min-width: 130px; } .fraud-result { padding: 14px 18px; margin-bottom: 20px; border-radius: 8px; background: #322a1e; color: #ffd28c; } .fraud-result.found { background: #3a2025; color: #ffb4b4; }
-.fraud-data { max-height: 420px; overflow: auto; margin-top: 16px; padding: 14px; color: #d5dee8; background: #10151c; border-radius: 7px; font-size: 12px; text-align: left; white-space: pre-wrap; }
-.card { background: #151c25; border: 1px solid #263342; border-radius: 12px; overflow: hidden; } .card-head, .pagination { display: flex; justify-content: space-between; align-items: center; padding: 18px 20px; } .card-head span, .pagination span { color: #8c9aaa; font-size: 13px; } .table-wrap { overflow: auto; max-height: 65vh; } table { width: 100%; border-collapse: collapse; white-space: nowrap; } th, td { padding: 13px 16px; text-align: left; border-top: 1px solid #263342; } th { position: sticky; top: 0; background: #1b2530; color: #a8b8c9; font-size: 12px; } td { color: #d5dee8; font-size: 13px; } tr:hover td { background: #19232e; } .empty { padding: 70px 20px; text-align: center; color: #8c9aaa; } .error { margin-bottom: 20px; padding: 14px; color: #ffb4b4; background: #321c24; border: 1px solid #713544; border-radius: 8px; }
-@media (max-width: 700px) { main { padding: 28px 16px; } header, .toolbar { flex-direction: column; } .toolbar { align-items: stretch; } input, select { min-width: 0; width: 100%; } h1 { font-size: 28px; } }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 1440px; margin: 0 auto; padding: 48px 32px; }
+header { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-bottom: 36px; }
+.eyebrow { color: #73daca; font-size: 11px; letter-spacing: .18em; font-weight: 700; }
+h1 { margin: 8px 0; font-size: 34px; letter-spacing: -.04em; }
+h2 { margin: 0 0 14px; font-size: 16px; letter-spacing: -.02em; }
+p { color: #8c9aaa; margin: 0; }
+.status { color: #73daca; font-size: 13px; }
+.header-side { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+.nav { display: flex; gap: 8px; }
+.nav-btn { background: transparent; color: #c5d2df; border: 1px solid #344353; }
+.nav-btn.active { background: #69d3c3; color: #09201e; border-color: transparent; }
+
+.toolbar, .fraud-form { display: flex; align-items: end; gap: 16px; padding: 20px; background: #151c25; border: 1px solid #263342; border-radius: 12px; margin-bottom: 20px; }
+.toolbar { position: relative; z-index: 5; }
+.fraud-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; }
+.fraud-intro { grid-column: 1 / -1; }
+.fraud-intro p { margin-top: 6px; font-size: 13px; }
+.fraud-actions { display: flex; justify-content: flex-end; }
+label, .search { display: flex; flex-direction: column; gap: 7px; color: #9eacbc; font-size: 12px; font-weight: 600; }
+.search { flex: 1; }
+input { width: 100%; min-width: 0; border: 1px solid #344353; border-radius: 7px; background: #0e141b; color: #eef4fa; padding: 11px 12px; font: inherit; }
+button { border: 0; border-radius: 7px; background: #69d3c3; color: #09201e; padding: 12px 18px; font-weight: 700; cursor: pointer; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+
+.select-field { position: relative; display: flex; flex-direction: column; gap: 7px; min-width: 220px; }
+.select-label { color: #9eacbc; font-size: 12px; font-weight: 600; }
+.select-trigger { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 220px; text-align: left; background: #0e141b; color: #eef4fa; border: 1px solid #344353; font-weight: 500; }
+.select-caret { width: 8px; height: 8px; border-right: 2px solid #9eacbc; border-bottom: 2px solid #9eacbc; transform: translateY(-2px) rotate(45deg); }
+.select-menu { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 30; margin: 0; padding: 6px; list-style: none; background: #151c25; border: 1px solid #344353; border-radius: 8px; max-height: 240px; overflow: auto; box-shadow: 0 16px 40px rgba(0, 0, 0, .4); }
+.select-menu button { width: 100%; text-align: left; background: transparent; color: #e7edf5; font-weight: 500; padding: 9px 10px; }
+.select-menu button[aria-selected="true"], .select-menu button:hover { background: #1b2530; }
+
+.fraud-stage { display: flex; flex-direction: column; gap: 16px; }
+.fraud-result { padding: 18px 20px; border-radius: 12px; background: #322a1e; color: #ffd28c; }
+.fraud-result.found { background: #3a2025; color: #ffb4b4; }
+.fraud-result p { margin-top: 8px; color: inherit; }
+.fraud-result button { margin-top: 14px; }
+.fraud-data { min-height: 420px; max-height: none; overflow: auto; margin: 0; padding: 18px; color: #d5dee8; background: #10151c; border: 1px solid #263342; border-radius: 12px; font-size: 13px; line-height: 1.55; text-align: left; white-space: pre-wrap; }
+
+.card, .relation { background: #151c25; border: 1px solid #263342; border-radius: 12px; }
+.card { overflow: hidden; }
+.relation { padding: 20px; margin-bottom: 16px; }
+.relation-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.relation-card + .relation-card { margin-top: 18px; padding-top: 18px; border-top: 1px solid #263342; }
+.relation-card strong { display: block; margin-bottom: 10px; }
+.relation dl { display: grid; grid-template-columns: minmax(120px, 38%) 1fr; gap: 8px 14px; margin: 0; }
+.relation dt { color: #8c9aaa; font-size: 12px; }
+.relation dd { margin: 0; color: #e7edf5; word-break: break-word; }
+.muted { color: #8c9aaa; }
+.card-head, .pagination { display: flex; justify-content: space-between; align-items: center; padding: 18px 20px; }
+.card-head.standalone, .pagination.standalone { padding-left: 0; padding-right: 0; }
+.card-head span, .pagination span { color: #8c9aaa; font-size: 13px; }
+.table-wrap { overflow: auto; max-height: 65vh; }
+table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+th, td { padding: 13px 16px; text-align: left; border-top: 1px solid #263342; }
+th { position: sticky; top: 0; background: #1b2530; color: #a8b8c9; font-size: 12px; }
+td { color: #d5dee8; font-size: 13px; }
+tr:hover td { background: #19232e; }
+.empty { padding: 70px 20px; text-align: center; color: #8c9aaa; }
+.error { margin-bottom: 20px; padding: 14px; color: #ffb4b4; background: #321c24; border: 1px solid #713544; border-radius: 8px; }
+
+@media (max-width: 900px) {
+  .fraud-form, .relation-grid { grid-template-columns: 1fr; }
+  .fraud-actions { justify-content: stretch; }
+  .fraud-actions button { width: 100%; }
+}
+@media (max-width: 700px) {
+  main { padding: 28px 16px; }
+  header, .toolbar { flex-direction: column; align-items: stretch; }
+  .header-side { align-items: flex-start; }
+  .select-field, .select-trigger { min-width: 0; width: 100%; }
+  h1 { font-size: 28px; }
+}

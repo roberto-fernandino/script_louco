@@ -171,8 +171,13 @@ async def query_table(
         filter_column = validate_identifier(filter_column, "filter_column")
         if filter_column not in columns:
             raise HTTPException(status_code=400, detail="filter_column must be a column from the selected table")
-        conditions.append(f'"{filter_column}"::text ILIKE :filter_value')
-        params["filter_value"] = f"%{filter_value}%"
+        value = filter_value.strip()
+        if filter_column == "id" or filter_column.endswith("_id"):
+            conditions.append(f'"{filter_column}"::text = :filter_value')
+            params["filter_value"] = value
+        else:
+            conditions.append(f'"{filter_column}"::text ILIKE :filter_value')
+            params["filter_value"] = f"%{value}%"
     if order_by:
         order_by = validate_identifier(order_by, "order_by")
         if order_by not in columns:
