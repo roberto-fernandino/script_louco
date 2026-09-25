@@ -257,6 +257,11 @@ def snoop_score_results(data: dict) -> dict[str, dict]:
     return parsed
 
 
+def normalize_cpf(value: object) -> str | None:
+    cpf = re.sub(r"\D", "", str(value or ""))
+    return cpf if len(cpf) == 11 else None
+
+
 def rate_limit_delay(response: httpx.Response, attempt: int) -> float:
     retry_after = response.headers.get("Retry-After")
     if retry_after:
@@ -419,7 +424,7 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
         documents = []
         seen_documents: set[str] = set()
         for candidate in candidates:
-            document = re.sub(r"\D", "", str(candidate["document_number"]))
+            document = normalize_cpf(candidate["document_number"])
             if (document and candidate.get("score_updated_at") is None
                     and candidate.get("score_csb8") is None and candidate.get("score_csba") is None
                     and document not in seen_documents):
@@ -456,7 +461,7 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
         for candidate in candidates:
             last_page += 1
             await save_fraud_scan_cursor(session, int(candidate["card_record_id"]), last_page)
-            document = re.sub(r"\D", "", str(candidate["document_number"]))
+            document = normalize_cpf(candidate["document_number"])
             if not document:
                 continue
             try:

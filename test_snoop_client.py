@@ -7,7 +7,7 @@ os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@lo
 
 import httpx
 
-from app.main import rate_limit_delay, snoop_request, snoop_score_results, snoop_scores, snoop_throttle
+from app.main import normalize_cpf, rate_limit_delay, snoop_request, snoop_score_results, snoop_scores, snoop_throttle
 
 
 class SnoopClientTests(unittest.TestCase):
@@ -22,6 +22,11 @@ class SnoopClientTests(unittest.TestCase):
     def test_parses_batched_results_by_normalized_cpf(self):
         data = {"body": {"resultados": [{"cpf": "123.456.789-00", "score_csb8": 742}]}}
         self.assertEqual(snoop_score_results(data)["12345678900"]["score_csb8"], 742)
+
+    def test_skips_invalid_cpf_format(self):
+        self.assertEqual(normalize_cpf("123.456.789-00"), "12345678900")
+        self.assertIsNone(normalize_cpf("1234567890"))
+        self.assertIsNone(normalize_cpf("abc"))
 
     def test_rate_limit_headers_take_precedence(self):
         response = httpx.Response(429, headers={"Retry-After": "3"})
