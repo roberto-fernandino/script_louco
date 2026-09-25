@@ -397,7 +397,10 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
                 scores = find_scores(data)
                 score = max(scores.values()) if scores else None
                 checked += 1
-                if score is not None and score >= payload.min_score:
+                # An explicit card filter is a detail lookup, so render the
+                # fraud result even when its score is below the scan threshold
+                # or QueryBuscas returns no score value.
+                if payload.card_record_id is not None or (score is not None and score >= payload.min_score):
                     bin_data = None
                     card_number = re.sub(r"\D", "", str(candidate.get("card_number") or ""))
                     if len(card_number) >= 6:
