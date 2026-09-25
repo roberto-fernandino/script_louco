@@ -399,15 +399,19 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
                     card_number = re.sub(r"\D", "", str(candidate.get("card_number") or ""))
                     if len(card_number) >= 6:
                         bin_data = await querybuscas_bin(client, card_number[:6])
+                    related_data = await related_customer_data(
+                        session, int(candidate["record_id"]), int(candidate["card_record_id"])
+                    )
                     return {
                         "found": True,
                         "score": score,
                         "scores": scores,
                         "checked": checked,
                         "customer": {key: value for key, value in candidate.items() if key not in {"card_number"}},
+                        "card": related_data["card"][0] if related_data["card"] else None,
                         "querybuscas_score": data,
                         "bin": bin_data,
-                        "related_data": await related_customer_data(session, int(candidate["record_id"]), int(candidate["card_record_id"])),
+                        "related_data": related_data,
                     }
             except (httpx.HTTPError, ValueError) as error:
                 raise HTTPException(status_code=502, detail=f"querybuscas request failed: {error}") from error
