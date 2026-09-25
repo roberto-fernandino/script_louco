@@ -53,7 +53,7 @@ function App() {
       const data = await request(`/tables/${encodeURIComponent(table)}/rows?${params}`);
       setRows(data.items); setColumns(data.columns); setOffset(nextOffset);
       if (table === "card" && filterColumn && filterValue.trim() && data.items.length) {
-        const fraudData = await request("/fraud/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ min_score: 0, max_checks: 1, card_record_id: Number(data.items[0].record_id) }) });
+        const fraudData = await request(`/cards/${encodeURIComponent(String(data.items[0].record_id))}/details`);
         setFraudResult(fraudData);
       }
     } catch (err) { setError(err instanceof Error ? err.message : "Erro desconhecido."); }

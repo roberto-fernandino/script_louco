@@ -424,6 +424,36 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
     return {"found": False, "score": None, "checked": checked, "customer": None}
 
 
+@app.get("/cards/{record_id}/details")
+async def card_details(record_id: int, session: Session) -> dict:
+    result = await session.execute(
+        text('''SELECT c."record_id", c."name", c."email", c."document_number",
+                      card."customer_id" AS linked_customer_id,
+                      card."record_id" AS card_record_id,
+                      card."brand" AS local_card_brand,
+                      card."check" AS card_check
+               FROM importacao_transacoes.customer c
+               INNER JOIN importacao_transacoes.card card ON card."customer_id" = c."record_id"
+               WHERE card."record_id" = :record_id'''),
+        {"record_id": record_id},
+    )
+    candidate = dict(result.mappings().first() or {})
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Card not found")
+    related_data = await related_customer_data(session, int(candidate["record_id"]), record_id)
+    return {
+        "found": True,
+        "score": None,
+        "scores": {},
+        "checked": 0,
+        "customer": candidate,
+        "card": related_data["card"][0] if related_data["card"] else None,
+        "querybuscas_score": None,
+        "bin": None,
+        "related_data": related_data,
+    }
+
+
 @app.get("/health")
 async def health(session: Session) -> dict[str, str]:
     await session.execute(text("SELECT 1"))
