@@ -383,7 +383,8 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
                                card."customer_id" AS linked_customer_id,
                                card."record_id" AS card_record_id, card."number" AS card_number,
                                card."brand" AS local_card_brand, card."check" AS card_check,
-                               c."score_csb8", c."score_csba", c."score_csb8_faixa", c."score_csba_faixa"
+                               c."score_csb8", c."score_csba", c."score_csb8_faixa", c."score_csba_faixa",
+                               c."score_updated_at"
                 FROM importacao_transacoes.customer c
                 INNER JOIN importacao_transacoes.card card ON card."customer_id" = c."record_id"
                 WHERE {' AND '.join(conditions)}
@@ -400,7 +401,8 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
                            card."customer_id" AS linked_customer_id,
                            card."record_id" AS card_record_id, card."number" AS card_number,
                            card."brand" AS local_card_brand, card."check" AS card_check,
-                           c."score_csb8", c."score_csba", c."score_csb8_faixa", c."score_csba_faixa"
+                           c."score_csb8", c."score_csba", c."score_csb8_faixa", c."score_csba_faixa",
+                           c."score_updated_at"
                     FROM importacao_transacoes.customer c
                     INNER JOIN importacao_transacoes.card card ON card."customer_id" = c."record_id"
                     WHERE {' AND '.join(conditions)}
@@ -414,7 +416,9 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
         seen_documents: set[str] = set()
         for candidate in candidates:
             document = re.sub(r"\D", "", str(candidate["document_number"]))
-            if document and candidate.get("score_csb8") is None and candidate.get("score_csba") is None and document not in seen_documents:
+            if (document and candidate.get("score_updated_at") is None
+                    and candidate.get("score_csb8") is None and candidate.get("score_csba") is None
+                    and document not in seen_documents):
                 seen_documents.add(document)
                 documents.append(document)
         score_results: dict[str, dict] = {}
@@ -435,7 +439,15 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
                  "score_csb8_faixa": result_data.get("score_csb8_faixa"),
                  "score_csba_faixa": result_data.get("score_csba_faixa"), "document": document},
             )
-        if score_results:
+        if documents:
+            await session.execute(
+                text('''UPDATE importacao_transacoes.customer
+                        SET "score_updated_at" = now()
+                        WHERE regexp_replace("document_number", '\\D', '', 'g') = ANY(CAST(:documents AS text[]))
+                          AND "score_updated_at" IS NULL'''),
+                {"documents": documents},
+            )
+        if documents:
             await session.commit()
         for candidate in candidates:
             last_page += 1
