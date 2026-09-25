@@ -321,12 +321,22 @@ async def snoop_request(client: httpx.AsyncClient, method: str, path: str, **kwa
 
 
 async def snoop_scores_batch(client: httpx.AsyncClient, documents: list[str]) -> dict[str, dict]:
-    data = await snoop_request(client, "POST", "/api/rendaescore", json={"cpfs": documents})
+    try:
+        data = await snoop_request(client, "POST", "/api/rendaescore", json={"cpfs": documents})
+    except HTTPException as error:
+        if error.status_code == 404:
+            return {}
+        raise
     return snoop_score_results(data)
 
 
 async def snoop_bin(client: httpx.AsyncClient, bin_code: str) -> dict:
-    data = await snoop_request(client, "GET", "/api/query/bin", params={"bin": bin_code})
+    try:
+        data = await snoop_request(client, "GET", "/api/query/bin", params={"bin": bin_code})
+    except HTTPException as error:
+        if error.status_code == 404:
+            return {}
+        raise
     body = data.get("body", data)
     return {"BIN": body.get("bin") or bin_code, **body}
 
