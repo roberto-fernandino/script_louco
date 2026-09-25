@@ -85,7 +85,7 @@ async def related_customer_data(session: AsyncSession, customer_id: int, card_re
     )
     card = dict(card_result.mappings().first() or {})
     if "number" in card:
-        card["number"] = f"{str(card['number']}" if card["number"] else None
+        card["number"] = card["number"] if card["number"] else None
     card.pop("cvv", None)
     related: dict[str, list[dict]] = {
         "customer": [dict(customer_result.mappings().first() or {})],
