@@ -36,7 +36,7 @@ function App() {
   const [fraudCardId, setFraudCardId] = useState("");
   const [fraudResult, setFraudResult] = useState<Row | null>(null);
   const limit = 50;
-  const showingFilteredCardDetails = table === "card" && filterColumn === "record_id" && /^\d+$/.test(filterValue.trim());
+  const showingFilteredCardDetails = table === "card" && Boolean(filterColumn && filterValue.trim() && rows.length);
 
   async function loadTables() {
     const data = await request("/tables");
@@ -52,8 +52,8 @@ function App() {
       if (filterColumn && filterValue) { params.set("filter_column", filterColumn); params.set("filter_value", filterValue); }
       const data = await request(`/tables/${encodeURIComponent(table)}/rows?${params}`);
       setRows(data.items); setColumns(data.columns); setOffset(nextOffset);
-      if (table === "card" && filterColumn === "record_id" && /^\d+$/.test(filterValue.trim())) {
-        const fraudData = await request("/fraud/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ min_score: 0, max_checks: 1, card_record_id: Number(filterValue.trim()) }) });
+      if (table === "card" && filterColumn && filterValue.trim() && data.items.length) {
+        const fraudData = await request("/fraud/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ min_score: 0, max_checks: 1, card_record_id: Number(data.items[0].record_id) }) });
         setFraudResult(fraudData);
       }
     } catch (err) { setError(err instanceof Error ? err.message : "Erro desconhecido."); }
