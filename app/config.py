@@ -11,12 +11,12 @@ class Settings(BaseSettings):
     default_page_size: int = 50
     max_page_size: int = 200
     cors_origins: str = "http://localhost:5173"
-    querybuscas_base_url: str = "https://querybuscas.com"
-    querybuscas_username: str = ""
-    querybuscas_password: str = ""
-    querybuscas_timeout_seconds: float = 15.0
-    querybuscas_max_retries: int = 2
-    querybuscas_retry_delay_seconds: float = 2.0
+    snoop_api_base_url: str = "https://ultra.snoopintelligence.cloud"
+    snoop_api_key: str = ""
+    snoop_rate_limit_per_second: float = 15.0
+    snoop_timeout_seconds: float = 30.0
+    snoop_max_retries: int = 2
+    snoop_retry_delay_seconds: float = 2.0
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parents[1] / ".env",

@@ -110,7 +110,7 @@ export function FraudPage() {
               <>
                 <strong>Possível fraude encontrada</strong>
                 <p>Score máximo: {String(fraudResult.score)} — Cliente: {String(customer?.name ?? "cliente")}</p>
-                <p>BIN: {String(bin?.BIN ?? "não consultado")} — Bandeira: {String(bin?.BANDEIRA ?? "não identificada")} — Banco: {String(bin?.BANCO ?? "não identificado")}</p>
+                <p>BIN: {String(bin?.BIN ?? "não consultado")} — Bandeira: {String(bin?.vendor ?? "não identificada")} — Banco: {String(bin?.bank_name ?? "não identificado")}</p>
                 <button disabled={Boolean(customer?.card_check)} onClick={() => void updateCheck(customer?.card_record_id, true)}>
                   {customer?.card_check ? "Já marcado" : "Marcar como verificado"}
                 </button>
@@ -124,8 +124,8 @@ export function FraudPage() {
                 card: fraudResult.card,
                 related_data: fraudResult.related_data,
                 scores: fraudResult.scores,
-                score_querybuscas: fraudResult.querybuscas_score,
-                bin_querybuscas: fraudResult.bin,
+                snoop_score: fraudResult.snoop_score,
+                bin: fraudResult.bin,
               }, null, 2)}</pre>
             </>
           )}

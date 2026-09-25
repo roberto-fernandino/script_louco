@@ -54,17 +54,20 @@ As rotas genéricas usam `importacao_transacoes` por padrão. Para outro schema 
 
 O resultado também inclui `related_data`, com todas as colunas do cliente, do card e das demais tabelas que possuam `customer_id`. O número do cartão é mascarado e o CVV não é retornado.
 
-A busca mantém o cursor em `importacao_transacoes.fraud_scan_progress`, continua pelo próximo `card.record_id` e volta ao início somente quando chega ao fim dos cards elegíveis. A migração formal está em `migrations/001_fraud_scan_progress.sql`.
+A busca mantém o cursor em `importacao_transacoes.fraud_scan_progress`, continua pelo próximo `card.record_id` e volta ao início somente quando chega ao fim dos cards elegíveis. As migrações formais estão em `migrations/001_fraud_scan_progress.sql` e `migrations/002_customer_scores.sql`.
 
-Configure no `.env` as credenciais do `querybuscas` (`QUERYBUSCAS_USERNAME` e `QUERYBUSCAS_PASSWORD`). O backend segue o mesmo fluxo do `check_bins.py`: login, cookie de sessão, nonce/sig novo e consulta do score/BIN. O score usa a escala de `0` a `1000`; o botão **Buscar fraude** filtra por campos do cliente e do card relacionado, consulta um card não verificado por vez até encontrar um acima do limite e permite marcá-lo como verificado. As credenciais devem permanecer somente no backend e nunca ser commitadas.
+Configure no `.env` `SNOOP_API_KEY` e, se necessário, `SNOOP_RATE_LIMIT_PER_SECOND` (padrão `15`). O backend chama `POST /api/rendaescore` em lotes de até 400 CPFs, persiste `score_csb8`, `score_csba` e suas faixas em `customer`, e só consulta novamente clientes sem score armazenado. O BIN usa `GET /api/query/bin`, sempre enviando a chave no header `x-api-key`. O score usa a escala de `0` a `1000`; o botão **Buscar fraude** filtra por campos do cliente e do card relacionado e permite marcá-lo como verificado. A chave deve permanecer somente no backend e nunca ser commitada.
 
 Para testar a integração diretamente:
 
 ```bash
 source .venv/bin/activate
-export QUERYBUSCAS_USERNAME='seu_usuario'
-export QUERYBUSCAS_PASSWORD='sua_senha'
-python3 test_querybuscas_integration.py 09386765632 --card 5502091234567890
+export SNOOP_API_KEY='sua_chave'
+curl -X POST 'https://ultra.snoopintelligence.cloud/api/rendaescore' \
+  -H "x-api-key: $SNOOP_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"cpfs":["09386765632"]}'
+curl 'https://ultra.snoopintelligence.cloud/api/query/bin?bin=550209' \
+  -H "x-api-key: $SNOOP_API_KEY"
 ```
 
 Os campos de cartão são dados sensíveis. Restrinja o acesso à API e, em produção, considere mascarar `number` e remover `cvv` das respostas.

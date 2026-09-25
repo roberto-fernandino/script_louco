@@ -219,21 +219,35 @@ async def update_card_check(record_id: int, payload: CheckUpdate, session: Sessi
     return dict(card)
 
 
-def find_scores(value: object) -> dict[str, float]:
+def snoop_scores(data: dict) -> dict[str, float]:
+    results = data.get("body", {}).get("resultados", [])
+    if isinstance(results, dict):
+        results = [results]
     scores: dict[str, float] = {}
-    if isinstance(value, dict):
-        for key, item in value.items():
-            normalized_key = str(key).upper()
-            if normalized_key in {"CSB8", "CSBA", "SCORE", "FRAUD_SCORE", "RISCO", "RISK_SCORE"}:
-                try:
-                    scores[str(key)] = float(item)
-                except (TypeError, ValueError):
-                    pass
-            scores.update(find_scores(item))
-    elif isinstance(value, list):
-        for item in value:
-            scores.update(find_scores(item))
+    for result in results if isinstance(results, list) else []:
+        if not isinstance(result, dict):
+            continue
+        for key in ("score_csb8", "score_csba"):
+            try:
+                if result.get(key) is not None:
+                    scores[key.upper()] = float(result[key])
+            except (TypeError, ValueError):
+                continue
     return scores
+
+
+def snoop_score_results(data: dict) -> dict[str, dict]:
+    results = data.get("body", {}).get("resultados", [])
+    if isinstance(results, dict):
+        results = [results]
+    parsed: dict[str, dict] = {}
+    for result in results if isinstance(results, list) else []:
+        if not isinstance(result, dict):
+            continue
+        cpf = re.sub(r"\D", "", str(result.get("cpf") or ""))
+        if cpf:
+            parsed[cpf] = result
+    return parsed
 
 
 def rate_limit_delay(response: httpx.Response, attempt: int) -> float:
@@ -249,78 +263,65 @@ def rate_limit_delay(response: httpx.Response, attempt: int) -> float:
             return max(0.0, min(float(reset) - time.time(), 300.0))
         except ValueError:
             pass
-    return settings.querybuscas_retry_delay_seconds * (attempt + 1)
+    return settings.snoop_retry_delay_seconds * (attempt + 1)
 
 
-async def querybuscas_login(client: httpx.AsyncClient) -> None:
-    base = settings.querybuscas_base_url.rstrip("/")
-    for attempt in range(settings.querybuscas_max_retries + 1):
-        response = await client.post(
-            f"{base}/api/auth/login",
-            json={"username": settings.querybuscas_username, "password": settings.querybuscas_password},
-            headers={"Accept": "*/*", "Origin": base, "Referer": f"{base}/"},
-        )
-        if response.status_code != 429 or attempt >= settings.querybuscas_max_retries:
-            break
-        await asyncio.sleep(rate_limit_delay(response, attempt))
+_snoop_rate_lock = asyncio.Lock()
+_snoop_next_request_at = 0.0
+
+
+async def snoop_throttle() -> None:
+    global _snoop_next_request_at
+    if settings.snoop_rate_limit_per_second <= 0:
+        return
+    interval = 1.0 / settings.snoop_rate_limit_per_second
+    async with _snoop_rate_lock:
+        now = time.monotonic()
+        wait_for = max(0.0, _snoop_next_request_at - now)
+        _snoop_next_request_at = max(now, _snoop_next_request_at) + interval
+    if wait_for:
+        await asyncio.sleep(wait_for)
+
+
+async def snoop_request(client: httpx.AsyncClient, method: str, path: str, **kwargs) -> dict:
+    if not settings.snoop_api_key:
+        raise HTTPException(status_code=503, detail="SNOOP_API_KEY não configurada")
+    headers = dict(kwargs.pop("headers", {}))
+    headers["x-api-key"] = settings.snoop_api_key
+    headers.setdefault("Accept", "application/json")
+    for attempt in range(settings.snoop_max_retries + 1):
+        await snoop_throttle()
+        try:
+            response = await client.request(
+                method, f"{settings.snoop_api_base_url.rstrip('/')}{path}", headers=headers, **kwargs
+            )
+        except httpx.HTTPError as error:
+            if attempt >= settings.snoop_max_retries:
+                raise HTTPException(status_code=502, detail=f"Snoop request failed: {error}") from error
+            await asyncio.sleep(settings.snoop_retry_delay_seconds * (attempt + 1))
+            continue
+        if response.status_code == 429 or response.status_code >= 500:
+            if attempt < settings.snoop_max_retries:
+                await asyncio.sleep(rate_limit_delay(response, attempt))
+                continue
+        break
     data = response.json() if response.content else {}
-    if response.status_code == 429:
-        raise HTTPException(status_code=429, detail="querybuscas bloqueou novas tentativas de login temporariamente")
-    if response.status_code == 403 and data.get("statusMessage") == "PlanExpired":
-        raise HTTPException(status_code=403, detail="Plano do querybuscas expirado")
-    if response.status_code != 200 or not data.get("success"):
-        raise HTTPException(status_code=502, detail=f"Login no querybuscas falhou: {data.get('message') or data.get('statusMessage') or response.status_code}")
-
-
-async def querybuscas_nonce(client: httpx.AsyncClient) -> tuple[str, str]:
-    base = settings.querybuscas_base_url.rstrip("/")
-    for attempt in range(settings.querybuscas_max_retries + 1):
-        response = await client.post(
-            f"{base}/api/consultas/nonce",
-            headers={"Accept": "*/*", "Origin": base, "Referer": f"{base}/pages/consultas/Score"},
-        )
-        if response.status_code != 429 or attempt >= settings.querybuscas_max_retries:
-            break
-        await asyncio.sleep(rate_limit_delay(response, attempt))
-    data = response.json() if response.content else {}
-    if response.status_code != 200 or "nonce" not in data or "sig" not in data:
-        raise HTTPException(status_code=502, detail=f"Nonce do querybuscas falhou ({response.status_code})")
-    return data["nonce"], data["sig"]
-
-
-async def querybuscas_score(client: httpx.AsyncClient, document: str) -> dict:
-    base = settings.querybuscas_base_url.rstrip("/")
-    last_response: httpx.Response | None = None
-    for attempt in range(settings.querybuscas_max_retries + 1):
-        nonce, signature = await querybuscas_nonce(client)
-        response = await client.get(
-            f"{base}/api/consultas/score/{document}",
-            headers={"Accept": "*/*", "x-qb-nonce": nonce, "x-qb-sig": signature, "Referer": f"{base}/pages/consultas/Score"},
-        )
-        if response.status_code != 429:
-            response.raise_for_status()
-            return response.json() if response.content else {}
-        last_response = response
-        if attempt < settings.querybuscas_max_retries:
-            await asyncio.sleep(rate_limit_delay(response, attempt))
-    retry_after = last_response.headers.get("Retry-After") if last_response else None
-    raise HTTPException(status_code=429, detail=f"querybuscas limitou a consulta de score; tente novamente depois{f' de {retry_after} segundos' if retry_after else ''}")
-
-
-async def querybuscas_bin(client: httpx.AsyncClient, bin_code: str) -> dict:
-    nonce, signature = await querybuscas_nonce(client)
-    base = settings.querybuscas_base_url.rstrip("/")
-    response = await client.get(
-        f"{base}/api/consultas/bin/{bin_code}",
-        headers={"Accept": "*/*", "x-qb-nonce": nonce, "x-qb-sig": signature, "Referer": f"{base}/pages/consultas/Bin"},
-    )
-    data = response.json() if response.content else {}
-    if response.status_code == 403 and data.get("requireCaptcha"):
-        raise HTTPException(status_code=403, detail="querybuscas solicitou captcha para a consulta de BIN")
     if response.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"Consulta de BIN falhou ({response.status_code})")
-    data["BIN"] = data.get("BIN") or bin_code
+        detail = data.get("message") or data.get("error") or data.get("body") or response.reason_phrase
+        status = response.status_code if response.status_code in {400, 401, 402, 403, 404, 429} else 502
+        raise HTTPException(status_code=status, detail=f"Snoop API ({response.status_code}): {detail}")
     return data
+
+
+async def snoop_scores_batch(client: httpx.AsyncClient, documents: list[str]) -> dict[str, dict]:
+    data = await snoop_request(client, "POST", "/api/rendaescore", json={"cpfs": documents})
+    return snoop_score_results(data)
+
+
+async def snoop_bin(client: httpx.AsyncClient, bin_code: str) -> dict:
+    data = await snoop_request(client, "GET", "/api/query/bin", params={"bin": bin_code})
+    body = data.get("body", data)
+    return {"BIN": body.get("bin") or bin_code, **body}
 
 
 @app.post("/fraud/search")
@@ -329,8 +330,8 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
         raise HTTPException(status_code=400, detail="min_score must be between 0 and 1000")
     if payload.max_checks < 1 or payload.max_checks > 1000:
         raise HTTPException(status_code=400, detail="max_checks must be between 1 and 1000")
-    if not settings.querybuscas_username or not settings.querybuscas_password:
-        raise HTTPException(status_code=503, detail="QUERYBUSCAS_USERNAME e QUERYBUSCAS_PASSWORD não configurados")
+    if not settings.snoop_api_key:
+        raise HTTPException(status_code=503, detail="SNOOP_API_KEY não configurada")
 
     conditions = [
         'c."document_number" IS NOT NULL',
@@ -364,7 +365,8 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
                 text(f'''SELECT c."record_id", c."name", c."email", c."document_number",
                                card."customer_id" AS linked_customer_id,
                                card."record_id" AS card_record_id, card."number" AS card_number,
-                               card."brand" AS local_card_brand, card."check" AS card_check
+                               card."brand" AS local_card_brand, card."check" AS card_check,
+                               c."score_csb8", c."score_csba", c."score_csb8_faixa", c."score_csba_faixa"
                 FROM importacao_transacoes.customer c
                 INNER JOIN importacao_transacoes.card card ON card."customer_id" = c."record_id"
                 WHERE {' AND '.join(conditions)}
@@ -380,7 +382,8 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
             text(f'''SELECT c."record_id", c."name", c."email", c."document_number",
                            card."customer_id" AS linked_customer_id,
                            card."record_id" AS card_record_id, card."number" AS card_number,
-                           card."brand" AS local_card_brand, card."check" AS card_check
+                           card."brand" AS local_card_brand, card."check" AS card_check,
+                           c."score_csb8", c."score_csba", c."score_csb8_faixa", c."score_csba_faixa"
                     FROM importacao_transacoes.customer c
                     INNER JOIN importacao_transacoes.card card ON card."customer_id" = c."record_id"
                     WHERE {' AND '.join(conditions)}
@@ -389,8 +392,34 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
         )
         candidates = [dict(row) for row in result.mappings().all()]
     checked = 0
-    async with httpx.AsyncClient(timeout=settings.querybuscas_timeout_seconds) as client:
-        await querybuscas_login(client)
+    async with httpx.AsyncClient(timeout=settings.snoop_timeout_seconds) as client:
+        documents = []
+        seen_documents: set[str] = set()
+        for candidate in candidates:
+            document = re.sub(r"\D", "", str(candidate["document_number"]))
+            if document and candidate.get("score_csb8") is None and candidate.get("score_csba") is None and document not in seen_documents:
+                seen_documents.add(document)
+                documents.append(document)
+        score_results: dict[str, dict] = {}
+        for start in range(0, len(documents), 400):
+            score_results.update(await snoop_scores_batch(client, documents[start:start + 400]))
+        for document, result_data in score_results.items():
+            score_csb8 = result_data.get("score_csb8")
+            score_csba = result_data.get("score_csba")
+            await session.execute(
+                text('''UPDATE importacao_transacoes.customer
+                        SET "score_csb8" = :score_csb8,
+                            "score_csba" = :score_csba,
+                            "score_csb8_faixa" = :score_csb8_faixa,
+                            "score_csba_faixa" = :score_csba_faixa,
+                            "score_updated_at" = now()
+                        WHERE regexp_replace("document_number", '\\D', '', 'g') = :document'''),
+                {"score_csb8": score_csb8, "score_csba": score_csba,
+                 "score_csb8_faixa": result_data.get("score_csb8_faixa"),
+                 "score_csba_faixa": result_data.get("score_csba_faixa"), "document": document},
+            )
+        if score_results:
+            await session.commit()
         for candidate in candidates:
             last_page += 1
             await save_fraud_scan_cursor(session, int(candidate["card_record_id"]), last_page)
@@ -398,18 +427,25 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
             if not document:
                 continue
             try:
-                data = await querybuscas_score(client, document)
-                scores = find_scores(data)
+                data = score_results.get(document, {
+                    "score_csb8": candidate.get("score_csb8"),
+                    "score_csba": candidate.get("score_csba"),
+                    "score_csb8_faixa": candidate.get("score_csb8_faixa"),
+                    "score_csba_faixa": candidate.get("score_csba_faixa"),
+                })
+                scores = {key.upper(): float(value) for key, value in (
+                    ("score_csb8", data.get("score_csb8")), ("score_csba", data.get("score_csba"))
+                ) if value is not None}
                 score = max(scores.values()) if scores else None
                 checked += 1
                 # An explicit card filter is a detail lookup, so render the
                 # fraud result even when its score is below the scan threshold
-                # or QueryBuscas returns no score value.
+                # or Snoop returns no score value.
                 if payload.card_record_id is not None or (score is not None and score >= payload.min_score):
                     bin_data = None
                     card_number = re.sub(r"\D", "", str(candidate.get("card_number") or ""))
                     if len(card_number) >= 6:
-                        bin_data = await querybuscas_bin(client, card_number[:6])
+                        bin_data = await snoop_bin(client, card_number[:6])
                     related_data = await related_customer_data(
                         session, int(candidate["record_id"]), int(candidate["card_record_id"])
                     )
@@ -420,12 +456,12 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
                         "checked": checked,
                         "customer": {key: value for key, value in candidate.items() if key not in {"card_number"}},
                         "card": related_data["card"][0] if related_data["card"] else None,
-                        "querybuscas_score": data,
+                        "snoop_score": data,
                         "bin": bin_data,
                         "related_data": related_data,
                     }
-            except (httpx.HTTPError, ValueError) as error:
-                raise HTTPException(status_code=502, detail=f"querybuscas request failed: {error}") from error
+            except ValueError as error:
+                raise HTTPException(status_code=502, detail=f"Snoop response inválida: {error}") from error
     return {"found": False, "score": None, "checked": checked, "customer": None}
 
 
@@ -453,7 +489,7 @@ async def card_details(record_id: int, session: Session) -> dict:
         "checked": 0,
         "customer": candidate,
         "card": related_data["card"][0] if related_data["card"] else None,
-        "querybuscas_score": None,
+        "snoop_score": None,
         "bin": None,
         "related_data": related_data,
     }
