@@ -361,7 +361,9 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
     if payload.card_record_id is None:
         conditions.append('card."check" IS NOT TRUE')
     last_card_record_id, last_page = await fraud_scan_cursor(session)
-    params: dict[str, object] = {"limit": payload.max_checks, "last_card_record_id": last_card_record_id}
+    # Always inspect a full provider batch. Stored scores are ordered first;
+    # only customers without a persisted score consume the external batch.
+    params: dict[str, object] = {"limit": max(400, payload.max_checks), "last_card_record_id": last_card_record_id}
     conditions.append('card."record_id" > :last_card_record_id')
     if payload.customer_record_id is not None:
         conditions.append('c."record_id" = :customer_record_id')
@@ -388,7 +390,8 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
                 FROM importacao_transacoes.customer c
                 INNER JOIN importacao_transacoes.card card ON card."customer_id" = c."record_id"
                 WHERE {' AND '.join(conditions)}
-                ORDER BY card."record_id" LIMIT :limit'''),
+                ORDER BY CASE WHEN c."score_updated_at" IS NOT NULL THEN 0 ELSE 1 END,
+                         card."record_id" LIMIT :limit'''),
         params,
     )
     candidates = [dict(row) for row in result.mappings().all()]
@@ -406,7 +409,8 @@ async def search_fraud(payload: FraudSearchRequest, session: Session) -> dict:
                     FROM importacao_transacoes.customer c
                     INNER JOIN importacao_transacoes.card card ON card."customer_id" = c."record_id"
                     WHERE {' AND '.join(conditions)}
-                    ORDER BY card."record_id" LIMIT :limit'''),
+                    ORDER BY CASE WHEN c."score_updated_at" IS NOT NULL THEN 0 ELSE 1 END,
+                             card."record_id" LIMIT :limit'''),
             params,
         )
         candidates = [dict(row) for row in result.mappings().all()]
