@@ -60,7 +60,7 @@ function App() {
         ]);
         if (databaseResult.status === "fulfilled") {
           const scanData = scanResult.status === "fulfilled" ? scanResult.value : {};
-          setFraudResult({ ...databaseResult.value, ...scanData, card: databaseResult.value.card, customer: databaseResult.value.customer, related_data: databaseResult.value.related_data });
+          setFraudResult({ ...scanData, ...databaseResult.value, found: true, score: scanData.score ?? null, scores: scanData.scores ?? {}, querybuscas_score: scanData.querybuscas_score ?? null, bin: scanData.bin ?? null });
         } else if (scanResult.status === "fulfilled") {
           setFraudResult(scanResult.value);
         } else {
