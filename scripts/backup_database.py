@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -12,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
+from postgresql_binaries import bin as postgresql_bin
 from sqlalchemy.engine import make_url
 
 
@@ -23,14 +23,15 @@ def required(name: str) -> str:
 
 
 def create_dump(database_url: str, output: Path) -> None:
-    if shutil.which("pg_dump") is None:
-        raise SystemExit("pg_dump was not found. Install the PostgreSQL client tools first.")
+    pg_dump = str(postgresql_bin() / "pg_dump")
+    if not Path(pg_dump).is_file():
+        raise SystemExit(f"Embedded pg_dump was not found at {pg_dump}")
 
     url = make_url(database_url)
     if url.drivername.startswith("postgresql") is False:
         raise SystemExit("DATABASE_URL must be a PostgreSQL URL")
 
-    command = ["pg_dump", "--no-owner", "--no-privileges", "--format=plain", "--file", str(output)]
+    command = [pg_dump, "--no-owner", "--no-privileges", "--format=plain", "--file", str(output)]
     if url.host:
         command += ["--host", url.host]
     if url.port:
