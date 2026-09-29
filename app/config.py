@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     snoop_max_retries: int = 2
     snoop_retry_delay_seconds: float = 2.0
 
+
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parents[1] / ".env",
         env_file_encoding="utf-8",

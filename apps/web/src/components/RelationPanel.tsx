@@ -1,10 +1,5 @@
 import type { Row } from "../api";
-
-function formatValue(value: unknown): string {
-  if (value == null || value === "") return "—";
-  if (typeof value === "boolean") return value ? "sim" : "não";
-  return String(value);
-}
+import { formatValue } from "../formatters";
 
 function FieldList({ data }: { data: Row }) {
   const entries = Object.entries(data).filter(([, value]) => value == null || typeof value !== "object");
@@ -13,7 +8,7 @@ function FieldList({ data }: { data: Row }) {
       {entries.map(([key, value]) => (
         <div key={key}>
           <dt>{key}</dt>
-          <dd>{formatValue(value)}</dd>
+          <dd>{formatValue(key, value)}</dd>
         </div>
       ))}
     </dl>

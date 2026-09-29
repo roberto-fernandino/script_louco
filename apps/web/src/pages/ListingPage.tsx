@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { request, type Row } from "../api";
 import { RelationPanel } from "../components/RelationPanel";
 import { SelectField } from "../components/SelectField";
+import { formatValue } from "../formatters";
 
 const PAGE_SIZE = 50;
 
@@ -48,6 +49,9 @@ export function ListingPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [offset, setOffset] = useState(0);
+  const [binInput, setBinInput] = useState("");
+  const [binData, setBinData] = useState<Row | null>(null);
+  const [binLoading, setBinLoading] = useState(false);
 
   const relationMode = (table === "customer" || table === "card") && relations.length > 0;
 
@@ -96,6 +100,24 @@ export function ListingPage() {
     }
   }
 
+  async function queryBin() {
+    const bin = binInput.replace(/\D/g, "").slice(0, 6);
+    if (bin.length !== 6) {
+      setError("Informe os 6 primeiros dígitos do cartão.");
+      return;
+    }
+    setBinLoading(true);
+    setError("");
+    try {
+      setBinData(await request(`/bin/${bin}`));
+    } catch (err) {
+      setBinData(null);
+      setError(err instanceof Error ? err.message : "Não foi possível consultar o BIN.");
+    } finally {
+      setBinLoading(false);
+    }
+  }
+
   useEffect(() => { loadTables().catch((err) => setError(err.message)); }, []);
   useEffect(() => { if (table) void loadRows(0, filterColumn, filterValue, table); }, [table]);
 
@@ -134,6 +156,33 @@ export function ListingPage() {
         </label>
         <button onClick={() => void loadRows(0)} disabled={loading}>{loading ? "Carregando..." : "Consultar"}</button>
       </section>
+      <section className="toolbar bin-toolbar">
+        <label className="search">
+          Consulta por BIN
+          <input
+            value={binInput}
+            onChange={(event) => setBinInput(event.target.value.replace(/\D/g, "").slice(0, 6))}
+            onKeyDown={(event) => { if (event.key === "Enter") void queryBin(); }}
+            inputMode="numeric"
+            maxLength={6}
+            placeholder="Ex.: 550209"
+          />
+        </label>
+        <button onClick={() => void queryBin()} disabled={binLoading}>
+          {binLoading ? "Consultando..." : "Consultar BIN"}
+        </button>
+      </section>
+      {binData && (
+        <section className="card bin-result">
+          <div className="card-head"><strong>Informações do BIN</strong><span>{String(binData.BIN ?? binInput)}</span></div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr>{Object.keys(binData).map((key) => <th key={key}>{key}</th>)}</tr></thead>
+              <tbody><tr>{Object.entries(binData).map(([key, value]) => <td key={key}>{formatValue(key, value)}</td>)}</tr></tbody>
+            </table>
+          </div>
+        </section>
+      )}
       {error && <div className="error">{error}</div>}
       {relationMode ? (
         <section>
@@ -170,7 +219,7 @@ export function ListingPage() {
                               onChange={(event) => void updateCheck(row.record_id, event.target.checked)}
                               aria-label={`Atualizar check do cartão ${String(row.record_id)}`}
                             />
-                          ) : String(row[column] ?? "—")}
+                          ) : formatValue(column, row[column])}
                         </td>
                       ))}
                     </tr>

@@ -23,6 +23,13 @@ uvicorn app.main:app --reload
 UI: `http://localhost:5173`.
 Documentação da API: `http://localhost:8000/docs`.
 
+## Backup automático do banco via Telegram
+
+Ao iniciar a API FastAPI, o `lifespan` executa `pg_dump`, envia o `.sql` ao chat
+configurado e remove o arquivo temporário. Configure `TELEGRAM_BOT_TOKEN` e
+`TELEGRAM_CHAT_ID` no `.env`. O cliente PostgreSQL (`pg_dump`) precisa estar
+instalado na máquina, e o bot deve ter sido iniciado/autorizado no chat de destino.
+
 ## API NestJS/TypeORM
 
 O backend NestJS fica em `api/`, enquanto o frontend existente continua em `apps/web/`.

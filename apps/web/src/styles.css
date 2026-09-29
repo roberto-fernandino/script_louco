@@ -15,6 +15,8 @@ p { color: #8c9aaa; margin: 0; }
 
 .toolbar, .fraud-form { display: flex; align-items: end; gap: 16px; padding: 20px; background: #151c25; border: 1px solid #263342; border-radius: 12px; margin-bottom: 20px; }
 .toolbar { position: relative; z-index: 5; }
+.bin-toolbar { margin-top: 0; }
+.bin-result { margin-bottom: 20px; }
 .fraud-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; }
 .fraud-intro { grid-column: 1 / -1; }
 .fraud-intro p { margin-top: 6px; font-size: 13px; }
