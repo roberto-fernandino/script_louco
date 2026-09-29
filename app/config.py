@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     snoop_timeout_seconds: float = 30.0
     snoop_max_retries: int = 2
     snoop_retry_delay_seconds: float = 2.0
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
 
 
     model_config = SettingsConfigDict(

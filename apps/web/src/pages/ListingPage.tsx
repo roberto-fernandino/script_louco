@@ -173,15 +173,23 @@ export function ListingPage() {
         </button>
       </section>
       {binData && (
-        <section className="card bin-result">
-          <div className="card-head"><strong>Informações do BIN</strong><span>{String(binData.BIN ?? binInput)}</span></div>
-          <div className="table-wrap">
-            <table>
-              <thead><tr>{Object.keys(binData).map((key) => <th key={key}>{key}</th>)}</tr></thead>
-              <tbody><tr>{Object.entries(binData).map(([key, value]) => <td key={key}>{formatValue(key, value)}</td>)}</tr></tbody>
-            </table>
-          </div>
-        </section>
+        <div className="fraud-stage bin-result">
+          {asRows(binData.matches).map((match, index) => {
+            const related = (match.related_data ?? {}) as Row;
+            const customers = asRows(related.customer);
+            const cards = asRows(related.card);
+            const panelCustomer = customers[0] ?? (match.customer as Row) ?? {};
+            const panelCards = cards.length ? cards : match.card ? [match.card as Row] : [];
+            return (
+              <RelationPanel
+                key={String((match.card as Row | undefined)?.record_id ?? index)}
+                customer={panelCustomer}
+                cards={panelCards}
+              />
+            );
+          })}
+          <pre className="fraud-data">{JSON.stringify(binData, null, 2)}</pre>
+        </div>
       )}
       {error && <div className="error">{error}</div>}
       {relationMode ? (

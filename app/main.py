@@ -21,7 +21,12 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     await run_startup_migrations()
-    await asyncio.to_thread(run_backup, settings.database_url,"8987761079:AAHK9VjFsJsJYDqHTVVMkNUuHUw9A04fNoc","5071872403")
+    await asyncio.to_thread(
+        run_backup,
+        settings.database_url,
+        settings.telegram_bot_token,
+        settings.telegram_chat_id,
+    )
     yield
 
 
@@ -349,14 +354,39 @@ async def snoop_bin(client: httpx.AsyncClient, bin_code: str) -> dict:
 
 
 @app.get("/bin/{bin_code}")
-async def query_bin(bin_code: str) -> dict:
+async def query_bin(bin_code: str, session: Session) -> dict:
     bin_code = re.sub(r"\D", "", bin_code)
     if len(bin_code) != 6:
         raise HTTPException(status_code=400, detail="BIN must contain exactly the first 6 digits")
     if not settings.snoop_api_key:
         raise HTTPException(status_code=503, detail="SNOOP_API_KEY não configurada")
+    bin_filter = '''LEFT(regexp_replace(card."number", '\\D', '', 'g'), 6) = :bin'''
+    total = await session.scalar(
+        text(f'''SELECT COUNT(*)
+                 FROM importacao_transacoes.card AS card
+                 WHERE {bin_filter}'''),
+        {"bin": bin_code},
+    )
+    cards = await session.execute(
+        text(f'''SELECT card."record_id", card."customer_id"
+                 FROM importacao_transacoes.card AS card
+                 WHERE {bin_filter}
+                 ORDER BY card."record_id"
+                 LIMIT 50'''),
+        {"bin": bin_code},
+    )
+    matches = []
+    for card in cards.mappings().all():
+        related = await related_customer_data(session, int(card["customer_id"]), int(card["record_id"]))
+        customer = related["customer"][0] if related["customer"] else None
+        matches.append({
+            "card": related["card"][0] if related["card"] else None,
+            "customer": customer,
+            "related_data": related,
+        })
     async with httpx.AsyncClient(timeout=settings.snoop_timeout_seconds) as client:
-        return await snoop_bin(client, bin_code)
+        bin_data = await snoop_bin(client, bin_code)
+    return {"bin": bin_data, "total": int(total or 0), "matches": matches}
 
 
 @app.post("/fraud/search")
